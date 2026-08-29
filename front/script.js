@@ -1,7 +1,7 @@
 // Configuración
 // El frontend se alojará en Netlify, y el backend en Render.
 // Nota: La URL del backend en Render se actualizará cuando se despliegue.
-const BACKEND_URL = 'http://localhost:5000';
+const BACKEND_URL = 'https://vaice-ia-whatsapp.onrender.com';
 
 // 1. "Ping" de calentamiento al cargar la página
 // Esto asegura que el servidor en Render se despierte de su estado de "suspensión" (dormido)
