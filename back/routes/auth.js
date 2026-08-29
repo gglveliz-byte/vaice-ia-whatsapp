@@ -3,6 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { parsePhoneNumberFromString } = require('libphonenumber-js');
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
@@ -12,9 +13,15 @@ router.post('/register', async (req, res) => {
         let user = await User.findOne({ telefonoCompleto });
         if (user) return res.status(400).json({ message: 'El usuario ya existe' });
 
-        // Extraer código de país (asumiendo formato +XXX...)
-        const codigoPaisMatch = telefonoCompleto.match(/^(\+\d{1,4})/);
-        const codigoPais = codigoPaisMatch ? codigoPaisMatch[1] : '+1';
+        // Extraer código de país correctamente usando libphonenumber-js
+        let codigoPais = '+1';
+        const parsedPhone = parsePhoneNumberFromString(telefonoCompleto);
+        if (parsedPhone) {
+            codigoPais = `+${parsedPhone.countryCallingCode}`;
+        } else {
+            const codigoPaisMatch = telefonoCompleto.match(/^(\+\d{1,4})/);
+            codigoPais = codigoPaisMatch ? codigoPaisMatch[1] : '+1';
+        }
 
         // Hacer admin al primer usuario
         const isFirst = (await User.countDocuments()) === 0;

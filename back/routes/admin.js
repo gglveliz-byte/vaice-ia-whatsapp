@@ -6,6 +6,7 @@ const auth = require('../middleware/authMiddleware');
 const User = require('../models/User');
 const Lead = require('../models/Lead');
 const Settings = require('../models/Settings');
+const { parsePhoneNumberFromString } = require('libphonenumber-js');
 
 // Middleware to verify Admin role
 const isAdmin = (req, res, next) => {
@@ -113,9 +114,16 @@ router.post('/upload-leads', auth, isAdmin, upload.single('file'), async (req, r
             // Limpiar espacios en el teléfono
             telefono = telefono.replace(/\s+/g, '');
 
-            // Asume que los números ya traen código de país, ej: +593...
-            const codigoPaisMatch = telefono.match(/^(\+\d{1,4})/);
-            const codigoPais = codigoPaisMatch ? codigoPaisMatch[1] : '+1'; // default fallback
+            // Extraer código de país exacto usando libphonenumber-js
+            let codigoPais = '+1';
+            const numberForParsing = telefono.startsWith('+') ? telefono : '+' + telefono;
+            const parsedPhone = parsePhoneNumberFromString(numberForParsing);
+            if (parsedPhone) {
+                codigoPais = `+${parsedPhone.countryCallingCode}`;
+            } else {
+                const codigoPaisMatch = telefono.match(/^(\+\d{1,4})/);
+                codigoPais = codigoPaisMatch ? codigoPaisMatch[1] : '+1';
+            }
             
             // Verifica si ya existe
             const exists = await Lead.findOne({ telefono });
