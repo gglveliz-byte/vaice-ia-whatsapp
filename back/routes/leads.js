@@ -9,21 +9,30 @@ const Settings = require('../models/Settings');
 router.get('/', auth, async (req, res) => {
     try {
         const { codigoPais, id: userId } = req.user;
-        const settings = await Settings.findOne() || { plantillaMensaje: 'Hola!', loteAsignacion: 50 };
+        const settings = await Settings.findOne() || { plantillaMensaje: 'Hola!', loteAsignacion: 50, horaInicio: 8, horaFin: 18 };
         const limite = settings.loteAsignacion || 50;
 
         // 1. Buscar leads que YA están asignados a este usuario y siguen pendientes
         let pendingLeads = await Lead.find({ assignedTo: userId, status: 'pending' });
 
-        // 2. Si tiene menos del límite permitido, buscar más leads "huerfanos" (sin asignar)
-        if (pendingLeads.length < limite) {
-            const needed = limite - pendingLeads.length;
+        // 2. Verificar límite diario basado en la fecha de asignación
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        
+        const assignedTodayCount = await Lead.countDocuments({ 
+            assignedTo: userId, 
+            assignedAt: { $gte: today } 
+        });
+
+        // 3. Si se le han asignado hoy menos del límite diario permitido, buscar más
+        if (assignedTodayCount < limite) {
+            const needed = limite - assignedTodayCount;
             const newLeads = await Lead.find({ assignedTo: null, codigoPais, status: 'pending' }).limit(needed);
             
             if (newLeads.length > 0) {
                 const newLeadIds = newLeads.map(l => l._id);
-                // Asignar permanentemente estos leads al usuario
-                await Lead.updateMany({ _id: { $in: newLeadIds } }, { assignedTo: userId });
+                // Asignar permanentemente estos leads al usuario con fecha de hoy
+                await Lead.updateMany({ _id: { $in: newLeadIds } }, { assignedTo: userId, assignedAt: new Date() });
                 // Agregarlos a la lista de respuesta
                 pendingLeads = [...pendingLeads, ...newLeads];
             }
@@ -31,7 +40,13 @@ router.get('/', auth, async (req, res) => {
 
         const sentLeads = await Lead.find({ assignedTo: userId, status: 'sent' }).sort({ sentAt: -1 }).limit(50);
         
-        res.json({ pendingLeads, sentLeads, plantilla: settings.plantillaMensaje });
+        res.json({ 
+            pendingLeads, 
+            sentLeads, 
+            plantilla: settings.plantillaMensaje,
+            horaInicio: settings.horaInicio || 8,
+            horaFin: settings.horaFin || 18
+        });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Error al obtener contactos' });

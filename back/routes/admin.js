@@ -21,7 +21,16 @@ const upload = multer({ dest: '/tmp/csv/' });
 router.get('/users', auth, isAdmin, async (req, res) => {
     try {
         const users = await User.find({}, '-password').sort({ createdAt: -1 });
-        res.json(users);
+        
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        
+        const usersWithStats = await Promise.all(users.map(async (u) => {
+            const sentToday = await Lead.countDocuments({ assignedTo: u._id, status: 'sent', sentAt: { $gte: today } });
+            return { ...u.toObject(), sentToday };
+        }));
+
+        res.json(usersWithStats);
     } catch (err) {
         res.status(500).json({ message: 'Error obteniendo usuarios' });
     }
@@ -65,7 +74,12 @@ router.get('/template', auth, isAdmin, async (req, res) => {
         if (!settings) {
             settings = await Settings.create({});
         }
-        res.json({ plantilla: settings.plantillaMensaje, loteAsignacion: settings.loteAsignacion });
+        res.json({ 
+            plantilla: settings.plantillaMensaje, 
+            loteAsignacion: settings.loteAsignacion,
+            horaInicio: settings.horaInicio,
+            horaFin: settings.horaFin
+        });
     } catch (err) {
         res.status(500).json({ message: 'Error obteniendo configuración' });
     }
@@ -79,9 +93,17 @@ router.post('/template', auth, isAdmin, async (req, res) => {
         
         if (req.body.plantillaMensaje !== undefined) settings.plantillaMensaje = req.body.plantillaMensaje;
         if (req.body.loteAsignacion !== undefined) settings.loteAsignacion = req.body.loteAsignacion;
+        if (req.body.horaInicio !== undefined) settings.horaInicio = req.body.horaInicio;
+        if (req.body.horaFin !== undefined) settings.horaFin = req.body.horaFin;
         
         await settings.save();
-        res.json({ message: 'Configuración actualizada', plantilla: settings.plantillaMensaje, loteAsignacion: settings.loteAsignacion });
+        res.json({ 
+            message: 'Configuración actualizada', 
+            plantilla: settings.plantillaMensaje, 
+            loteAsignacion: settings.loteAsignacion,
+            horaInicio: settings.horaInicio,
+            horaFin: settings.horaFin
+        });
     } catch (err) {
         res.status(500).json({ message: 'Error actualizando configuración' });
     }

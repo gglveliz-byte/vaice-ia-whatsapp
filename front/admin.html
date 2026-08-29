@@ -62,8 +62,19 @@
                 <textarea id="plantillaInput" class="form-control" placeholder="Cargando..."></textarea>
                 
                 <div style="margin-top: 15px;">
-                    <label style="font-size: 13px; font-weight: 500; color: var(--ink-2);">Leads asignados por vendedor a la vez:</label>
+                    <label style="font-size: 13px; font-weight: 500; color: var(--ink-2);">Límite Diario de Asignación por Vendedor:</label>
                     <input type="number" id="loteInput" class="form-control" value="50" style="margin-top: 5px;">
+                </div>
+
+                <div class="grid-2" style="margin-top: 15px; margin-bottom: 0;">
+                    <div>
+                        <label style="font-size: 13px; font-weight: 500; color: var(--ink-2);">Hora Inicio (0-23):</label>
+                        <input type="number" id="horaInicio" class="form-control" value="8" style="margin-top: 5px;">
+                    </div>
+                    <div>
+                        <label style="font-size: 13px; font-weight: 500; color: var(--ink-2);">Hora Fin (0-23):</label>
+                        <input type="number" id="horaFin" class="form-control" value="18" style="margin-top: 5px;">
+                    </div>
                 </div>
 
                 <button onclick="saveTemplate()" class="btn btn-primary btn-sm" style="margin-top: 15px;">Guardar Configuración</button>
@@ -89,6 +100,7 @@
                                 <th>Nombre</th>
                                 <th>Teléfono</th>
                                 <th>País</th>
+                                <th>Enviados Hoy</th>
                                 <th>Rol</th>
                             </tr>
                         </thead>
@@ -150,6 +162,8 @@
                     if(tpl.loteAsignacion) {
                         document.getElementById('loteInput').value = tpl.loteAsignacion;
                     }
+                    if(tpl.horaInicio !== undefined) document.getElementById('horaInicio').value = tpl.horaInicio;
+                    if(tpl.horaFin !== undefined) document.getElementById('horaFin').value = tpl.horaFin;
                 }
 
                 // Users
@@ -164,6 +178,7 @@
                                 <td>${u.nombre}</td>
                                 <td>${u.telefonoCompleto}</td>
                                 <td>${u.codigoPais}</td>
+                                <td><strong style="color:var(--accent)">${u.sentToday || 0}</strong></td>
                                 <td><span style="background:${u.role==='admin'?'var(--accent)':'var(--line)'}; color:${u.role==='admin'?'#fff':'var(--ink)'}; padding:2px 8px; border-radius:10px; font-size:12px;">${u.role}</span></td>
                             </tr>
                         `;
@@ -200,11 +215,13 @@
         async function saveTemplate() {
             const val = document.getElementById('plantillaInput').value;
             const lote = parseInt(document.getElementById('loteInput').value) || 50;
+            const horaInicio = parseInt(document.getElementById('horaInicio').value) || 8;
+            const horaFin = parseInt(document.getElementById('horaFin').value) || 18;
             try {
                 await fetch(`${BACKEND_URL}/api/admin/template`, {
                     method: 'POST',
                     headers: { ...headers, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ plantillaMensaje: val, loteAsignacion: lote })
+                    body: JSON.stringify({ plantillaMensaje: val, loteAsignacion: lote, horaInicio, horaFin })
                 });
                 alert('Configuración guardada');
             } catch (e) {
