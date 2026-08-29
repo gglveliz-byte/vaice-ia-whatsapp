@@ -17,8 +17,15 @@
         }
         .nav-link { color: var(--accent); cursor: pointer; font-size: 14px; font-weight: 500; }
         textarea.form-control { resize: vertical; min-height: 100px; }
-        .user-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        .user-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; min-width: 500px; }
         .user-table th, .user-table td { text-align: left; padding: 12px; border-bottom: 1px solid var(--line); }
+        .table-responsive { width: 100%; overflow-x: auto; }
+        
+        @media (max-width: 768px) {
+            .grid-2 { grid-template-columns: 1fr; }
+            .dashboard { padding-top: 80px; }
+            .stat-value { font-size: 2rem; }
+        }
     </style>
 </head>
 <body>
@@ -75,36 +82,40 @@
         <div class="grid-2">
             <div class="card">
                 <h3 style="font-family: var(--font-display);">Lista de Usuarios</h3>
-                <table class="user-table">
-                    <thead>
-                        <tr>
-                            <th>Nombre</th>
-                            <th>Teléfono</th>
-                            <th>País</th>
-                            <th>Rol</th>
-                        </tr>
-                    </thead>
-                    <tbody id="userTableBody">
-                        <tr><td colspan="4">Cargando...</td></tr>
-                    </tbody>
-                </table>
+                <div class="table-responsive">
+                    <table class="user-table">
+                        <thead>
+                            <tr>
+                                <th>Nombre</th>
+                                <th>Teléfono</th>
+                                <th>País</th>
+                                <th>Rol</th>
+                            </tr>
+                        </thead>
+                        <tbody id="userTableBody">
+                            <tr><td colspan="4">Cargando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <div class="card">
                 <h3 style="font-family: var(--font-display);">Contactos por País</h3>
-                <table class="user-table">
-                    <thead>
-                        <tr>
-                            <th>País</th>
-                            <th>Total</th>
-                            <th>Enviados</th>
-                            <th>Pendientes</th>
-                        </tr>
-                    </thead>
-                    <tbody id="leadsTableBody">
-                        <tr><td colspan="4">Aún no hay contactos</td></tr>
-                    </tbody>
-                </table>
+                <div class="table-responsive">
+                    <table class="user-table">
+                        <thead>
+                            <tr>
+                                <th>País</th>
+                                <th>Total</th>
+                                <th>Enviados</th>
+                                <th>Pendientes</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leadsTableBody">
+                            <tr><td colspan="4">Aún no hay contactos</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>

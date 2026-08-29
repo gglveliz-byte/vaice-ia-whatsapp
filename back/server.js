@@ -10,6 +10,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.get('/', (req, res) => {
+    res.send('<h1>Voice IA Backend is Running</h1><p>Sistema Operativo. Las llamadas API se deben hacer a /api/... </p>');
+});
+
 app.get('/api/ping', (req, res) => {
     res.status(200).json({ status: 'ok', message: 'Backend is awake' });
 });
