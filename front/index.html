@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice IA WhatsApp - Programa de Comisiones</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@300;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@23.0.4/build/css/intlTelInput.css">
+    <style>
+        /* Form specific styles */
+        .registration-form {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 30px;
+            border-radius: 16px;
+            width: 100%;
+            max-width: 450px;
+            margin: 40px auto 0;
+            text-align: left;
+        }
+        .form-group { margin-bottom: 20px; }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: #d1d5db;
+            font-family: var(--font-display);
+        }
+        .form-control {
+            width: 100%;
+            padding: 12px 15px;
+            background: rgba(0,0,0,0.2);
+            border: 1px solid var(--line-2);
+            border-radius: 8px;
+            color: #fff;
+            font-family: var(--font-body);
+            font-size: 15px;
+            box-sizing: border-box;
+        }
+        .form-control:focus { outline: none; border-color: var(--accent); }
+        /* intl-tel-input integration */
+        .iti { width: 100%; display: block; }
+        .iti__country-list { background: var(--ink); color: #fff; border: 1px solid var(--line-2); }
+        .iti__country.iti__highlight { background: rgba(255,255,255,0.1); }
+        .iti__search-input { background: rgba(0,0,0,0.3); color: #fff; border-color: var(--line-2); }
+        
+        .loader {
+            display: none;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top: 3px solid #fff;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div class="bg-geo"></div>
+    
+    <header class="header">
+        <div class="container header-inner">
+            <div class="brand">
+                <img src="logotipo.png" alt="Logo" class="brand-logo">
+                <span class="brand-name">VOICE IA</span>
+            </div>
+            <nav class="nav">
+                <a href="#modelo">Modelo Económico</a>
+                <a href="#registro">Registrarse</a>
+            </nav>
+            <div class="header-actions">
+                <a href="#registro" class="btn btn-primary btn-sm">Unirse Ahora</a>
+            </div>
+        </div>
+    </header>
+
+    <section class="hero">
+        <div class="hero-copy">
+            <div class="eyebrow"><div class="dot"></div> Únete al Equipo</div>
+            <h1 class="hero-title">Monetiza tu <span class="strike">WhatsApp<span class="strike-line"></span></span> Fácilmente</h1>
+            <p class="hero-text">Nosotros ponemos el sistema y los mensajes. Tú solo prestas tu número. Gana comisiones automáticas por cada venta cerrada en toda la red.</p>
+            <a href="#registro" class="btn btn-primary">Empieza a ganar hoy</a>
+        </div>
+        <div class="hero-visual">
+            <img src="logotipo.png" alt="App Preview" style="max-width: 60%; border-radius: 50%; box-shadow: 0 0 50px rgba(37,99,235,0.4);">
+        </div>
+    </section>
+
+    <section id="modelo" class="modelo-section">
+        <div class="container">
+            <h2 class="section-title center">El Modelo de Bote Común</h2>
+            <p class="section-sub center">No compites con nadie. Trabajas en un ecosistema donde todas las ventas benefician a todos los usuarios activos.</p>
+            
+            <div class="split-grid">
+                <div class="split-card">
+                    <div class="split-header">
+                        <h3>Comisión por Venta</h3>
+                        <span class="badge">Fijo</span>
+                    </div>
+                    <div class="split-value">$50<span>/venta</span></div>
+                    <div class="split-desc">Aportado al bote común</div>
+                    <p class="split-copy">Cada vez que cerramos una venta usando la red, se generan $50 que van directamente al fondo colectivo de todos los miembros.</p>
+                </div>
+                <div class="split-card highlight">
+                    <div class="split-header">
+                        <h3>Distribución</h3>
+                        <span class="badge badge-light">Semanal</span>
+                    </div>
+                    <div class="split-value">100%<span> Repartido</span></div>
+                    <div class="split-desc">Entre todos los participantes</div>
+                    <p class="split-copy">Si se generan 5 ventas ($250) en la semana y hay 10 personas en el programa, cada uno recibe su parte proporcional garantizada. Pagos todos los fines de semana.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="registro" class="cta-final">
+        <div class="container" style="text-align: center;">
+            <h2 class="section-title light">Regístrate Ahora</h2>
+            <p style="color: #ccc; max-width: 500px; margin: 0 auto;">Crea tu cuenta, conecta tu número de WhatsApp y empieza a recibir tu parte de las comisiones semanales.</p>
+            
+            <form id="registroForm" class="registration-form">
+                <div class="form-group">
+                    <label>Nombre Completo</label>
+                    <input type="text" id="nombre" class="form-control" required placeholder="Ej: Juan Pérez">
+                </div>
+                <div class="form-group">
+                    <label>Número de WhatsApp</label>
+                    <input type="tel" id="telefono" class="form-control" required placeholder="Ej: 999 123 456">
+                </div>
+                <div class="form-group">
+                    <label>Contraseña</label>
+                    <input type="password" id="password" class="form-control" required placeholder="Crea una contraseña segura">
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px; display: flex; justify-content: center;" id="submitBtn">
+                    <span id="btnText">Registrarme y Conectar</span>
+                    <div class="loader" id="btnLoader"></div>
+                </button>
+                <div id="formMessage" style="margin-top: 15px; font-size: 14px; text-align: center; display: none;"></div>
+                <div style="margin-top: 25px; text-align: center; font-size: 14px; color: #a1a1aa;">
+                    ¿Ya tienes una cuenta? <a href="login.html" style="color: var(--accent); text-decoration: none; font-weight: 500;">Iniciar Sesión aquí</a>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <footer class="footer-legal">
+        <div class="container">
+            <p>&copy; 2026 Voice IA. Todos los derechos reservados.</p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@23.0.4/build/js/intlTelInput.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

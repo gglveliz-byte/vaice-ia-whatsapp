@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice IA - Panel de Usuario</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@300;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .dashboard { padding: 100px 20px 40px; max-width: 800px; margin: 0 auto; }
+        .card { background: var(--bg-soft); border: 1px solid var(--line); border-radius: 12px; padding: 25px; margin-bottom: 20px; }
+        .lead-list { display: grid; gap: 15px; }
+        .lead-item { display: flex; justify-content: space-between; align-items: center; background: var(--bg); padding: 15px; border-radius: 8px; border: 1px solid var(--line-2); }
+        .wa-btn { background: #25D366; color: #fff; padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; transition: transform 0.2s; }
+        .wa-btn:hover { transform: translateY(-2px); }
+        .nav-link { color: var(--accent); cursor: pointer; font-size: 14px; font-weight: 500; }
+        .tabs { display: flex; border-bottom: 1px solid var(--line-2); margin-top: 20px; background: var(--bg-soft); border-top-left-radius: 12px; border-top-right-radius: 12px; overflow: hidden; }
+        .tab { flex: 1; text-align: center; padding: 15px; cursor: pointer; font-weight: 600; color: var(--ink-3); border-bottom: 3px solid transparent; transition: all 0.2s; user-select: none; }
+        .tab:active { background: var(--line); }
+        .tab.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--bg); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container header-inner">
+            <div class="brand">
+                <img src="logotipo.png" alt="Logo" class="brand-logo">
+                <span class="brand-name">PANEL USUARIO</span>
+            </div>
+            <div class="header-actions">
+                <span id="userName" style="font-size: 14px; margin-right: 15px; font-weight: 500;"></span>
+                <a onclick="logout()" class="nav-link">Cerrar Sesión</a>
+            </div>
+        </div>
+    </header>
+
+    <div class="dashboard">
+        <h2 class="section-title" style="font-size: 2rem;">Tus Asignaciones</h2>
+        <p class="section-sub">Envía la plantilla a los números listados abajo. Se te asignan números de tu mismo país.</p>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('pendientes')">Pendientes</div>
+            <div class="tab" onclick="switchTab('enviados')">Enviados</div>
+        </div>
+
+        <div id="tab-pendientes" class="tab-content active">
+            <div class="card" style="border-top-left-radius: 0; border-top-right-radius: 0;">
+                <div class="lead-list" id="leadsContainer">
+                    <p style="text-align: center; color: var(--ink-3);">Cargando contactos...</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-enviados" class="tab-content">
+            <div class="card" style="border-top-left-radius: 0; border-top-right-radius: 0;">
+                <div class="lead-list" id="sentContainer">
+                    <p style="text-align: center; color: var(--ink-3);">Cargando historial...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BACKEND_URL = 'http://localhost:5000'; // Cambiar a Render URL
+        const token = localStorage.getItem('voice_token');
+        const user = JSON.parse(localStorage.getItem('voice_user') || '{}');
+
+        if (!token) window.location.href = 'login.html';
+        document.getElementById('userName').textContent = user.nombre || 'Usuario';
+
+        async function loadLeads() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/leads`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (res.status === 401) return logout();
+                
+                const data = await res.json();
+                renderLeads(data.pendingLeads || [], data.sentLeads || [], data.plantilla);
+            } catch (err) {
+                console.error("Error cargando leads", err);
+            }
+        }
+
+        function renderLeads(pendingLeads, sentLeads, plantilla) {
+            const container = document.getElementById('leadsContainer');
+            
+            // Render Pendientes
+            if (pendingLeads.length === 0) {
+                container.innerHTML = `<p style="text-align: center; color: var(--ink-3); padding: 20px;">No hay números pendientes para tu país en este momento.</p>`;
+            } else {
+                container.innerHTML = '';
+                pendingLeads.forEach(lead => {
+                    // Reemplazar las variables de la plantilla ({{1}} = Nombre Cliente, {{2}} = ID)
+                    let text = plantilla
+                        .replace('{{1}}', lead.nombre || '')
+                        .replace('{{2}}', lead._id.substring(0, 6));
+                    
+                    const waLink = `https://wa.me/${lead.telefono.replace('+', '')}?text=${encodeURIComponent(text)}`;
+                    
+                    const div = document.createElement('div');
+                    div.className = 'lead-item';
+                    div.id = `lead-${lead._id}`;
+                    div.innerHTML = `
+                        <div>
+                            <div style="font-weight: 600; font-size: 14px;">${lead.nombre || 'Sin nombre'}</div>
+                            <div style="font-family: monospace; font-size: 13px; color: var(--ink-2);">${lead.telefono}</div>
+                        </div>
+                        <a class="wa-btn" style="cursor: pointer;" onclick="markAsSent('${lead._id}', this, '${waLink}', '${lead.telefono}', '${lead.nombre || ''}')">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.888-.788-1.489-1.761-1.663-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z"/></svg>
+                            Enviar
+                        </a>
+                    `;
+                    container.appendChild(div);
+                });
+            }
+
+            // Render Enviados
+            const sentContainer = document.getElementById('sentContainer');
+            if (sentLeads.length === 0) {
+                sentContainer.innerHTML = `<p style="text-align: center; color: var(--ink-3); padding: 20px;">No has enviado mensajes aún.</p>`;
+            } else {
+                sentContainer.innerHTML = '';
+                sentLeads.forEach(lead => {
+                    addSentItemToDOM(lead._id, lead.telefono, lead.nombre);
+                });
+            }
+        }
+
+        function addSentItemToDOM(id, telefono, nombre) {
+            const sentContainer = document.getElementById('sentContainer');
+            if (sentContainer.querySelector('p')) {
+                sentContainer.innerHTML = '';
+            }
+            const div = document.createElement('div');
+            div.className = 'lead-item';
+            div.style.opacity = '0.7';
+            div.innerHTML = `
+                <div>
+                    <div style="font-weight: 600; font-size: 14px;">${nombre || 'Sin nombre'}</div>
+                    <div style="font-family: monospace; font-size: 13px; color: var(--ink-2);">${telefono}</div>
+                </div>
+                <span style="color: var(--ink-2); font-weight: 500; font-size: 13px;">Enviado</span>
+            `;
+            sentContainer.prepend(div);
+        }
+
+        async function markAsSent(id, btnElement, link, telefono, nombre) {
+            // 1. Abrir WhatsApp Web con el link generado
+            window.open(link, '_blank');
+
+            // 2. Mover visualmente a la columna de enviados
+            const item = document.getElementById(`lead-${id}`);
+            if (item) item.remove();
+            
+            const container = document.getElementById('leadsContainer');
+            if (container.children.length === 0) {
+                container.innerHTML = `<p style="text-align: center; color: var(--ink-3); padding: 20px;">No hay números pendientes para tu país en este momento.</p>`;
+            }
+
+            addSentItemToDOM(id, telefono, nombre);
+            
+            try {
+                // 3. Avisar al servidor para que asigne el estatus "sent"
+                await fetch(`${BACKEND_URL}/api/leads/mark-sent/${id}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function switchTab(tabId) {
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(t => t.classList.remove('active'));
+            
+            if (tabId === 'pendientes') tabs[0].classList.add('active');
+            if (tabId === 'enviados') tabs[1].classList.add('active');
+
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.getElementById('tab-' + tabId).classList.add('active');
+        }
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = 'login.html';
+        }
+
+        loadLeads();
+    </script>
+</body>
+</html>

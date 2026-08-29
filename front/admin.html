@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice IA - Panel Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@300;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .dashboard { padding: 100px 20px 40px; max-width: 900px; margin: 0 auto; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        .card { background: var(--bg-soft); border: 1px solid var(--line); border-radius: 12px; padding: 25px; }
+        .stat-value { font-family: var(--font-display); font-size: 2.5rem; color: var(--ink); line-height: 1; }
+        .form-control {
+            width: 100%; padding: 12px; background: rgba(0,0,0,0.1); border: 1px solid var(--line-2);
+            border-radius: 8px; font-family: var(--font-body); font-size: 14px; margin-top: 10px; box-sizing: border-box;
+        }
+        .nav-link { color: var(--accent); cursor: pointer; font-size: 14px; font-weight: 500; }
+        textarea.form-control { resize: vertical; min-height: 100px; }
+        .user-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        .user-table th, .user-table td { text-align: left; padding: 12px; border-bottom: 1px solid var(--line); }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="container header-inner">
+            <div class="brand">
+                <img src="logotipo.png" alt="Logo" class="brand-logo">
+                <span class="brand-name">PANEL ADMIN</span>
+            </div>
+            <div class="header-actions">
+                <a onclick="logout()" class="nav-link">Cerrar Sesión</a>
+            </div>
+        </div>
+    </header>
+
+    <div class="dashboard">
+        <h2 class="section-title">Administración</h2>
+        
+        <div class="grid-2">
+            <div class="card">
+                <h3 style="margin-bottom: 10px; font-family: var(--font-display);">Usuarios Registrados</h3>
+                <div class="stat-value" id="statUsers">...</div>
+            </div>
+            <div class="card">
+                <h3 style="margin-bottom: 10px; font-family: var(--font-display);">Leads Pendientes / Enviados</h3>
+                <div class="stat-value" style="font-size: 1.8rem;"><span id="statPending">...</span> / <span id="statSent">...</span></div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <h3 style="font-family: var(--font-display);">Configuración Global</h3>
+                <p style="font-size: 13px; color: var(--ink-2); margin-bottom: 10px;">Plantilla de WhatsApp y Límite de Contactos.</p>
+                <textarea id="plantillaInput" class="form-control" placeholder="Cargando..."></textarea>
+                
+                <div style="margin-top: 15px;">
+                    <label style="font-size: 13px; font-weight: 500; color: var(--ink-2);">Leads asignados por vendedor a la vez:</label>
+                    <input type="number" id="loteInput" class="form-control" value="50" style="margin-top: 5px;">
+                </div>
+
+                <button onclick="saveTemplate()" class="btn btn-primary btn-sm" style="margin-top: 15px;">Guardar Configuración</button>
+            </div>
+            <div class="card">
+                <h3 style="font-family: var(--font-display);">Subir Contactos</h3>
+                <p style="font-size: 13px; color: var(--ink-2);">Pega los números aquí, o sube un archivo CSV/TXT (ej: +593999).</p>
+                <textarea id="textInput" class="form-control" placeholder="Pega los números aquí... (uno por línea)" style="min-height: 80px; margin-bottom: 10px;"></textarea>
+                <div style="font-size: 12px; color: var(--ink-2); margin-bottom: 5px;">O sube un archivo:</div>
+                <input type="file" id="fileInput" class="form-control" accept=".csv, .txt">
+                <button onclick="uploadLeads()" class="btn btn-primary btn-sm" style="margin-top: 15px;">Subir Contactos</button>
+                <div id="uploadMsg" style="margin-top: 10px; font-size: 13px; color: var(--accent);"></div>
+            </div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <h3 style="font-family: var(--font-display);">Lista de Usuarios</h3>
+                <table class="user-table">
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>Teléfono</th>
+                            <th>País</th>
+                            <th>Rol</th>
+                        </tr>
+                    </thead>
+                    <tbody id="userTableBody">
+                        <tr><td colspan="4">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <h3 style="font-family: var(--font-display);">Contactos por País</h3>
+                <table class="user-table">
+                    <thead>
+                        <tr>
+                            <th>País</th>
+                            <th>Total</th>
+                            <th>Enviados</th>
+                            <th>Pendientes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leadsTableBody">
+                        <tr><td colspan="4">Aún no hay contactos</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BACKEND_URL = 'http://localhost:5000'; // Cambiar a Render URL
+        const token = localStorage.getItem('voice_token');
+        const user = JSON.parse(localStorage.getItem('voice_user') || '{}');
+
+        if (!token || user.role !== 'admin') {
+            window.location.href = 'login.html';
+        }
+
+        const headers = { 'Authorization': `Bearer ${token}` };
+
+        async function loadData() {
+            try {
+                // Stats
+                const statRes = await fetch(`${BACKEND_URL}/api/admin/stats`, { headers });
+                if (statRes.ok) {
+                    const stats = await statRes.json();
+                    document.getElementById('statUsers').textContent = stats.totalUsers;
+                    document.getElementById('statPending').textContent = stats.pendingLeads;
+                    document.getElementById('statSent').textContent = stats.sentLeads;
+                }
+
+                // Template and Settings
+                const tplRes = await fetch(`${BACKEND_URL}/api/admin/template`, { headers });
+                if (tplRes.ok) {
+                    const tpl = await tplRes.json();
+                    document.getElementById('plantillaInput').value = tpl.plantilla || '';
+                    if(tpl.loteAsignacion) {
+                        document.getElementById('loteInput').value = tpl.loteAsignacion;
+                    }
+                }
+
+                // Users
+                const usrRes = await fetch(`${BACKEND_URL}/api/admin/users`, { headers });
+                if (usrRes.ok) {
+                    const users = await usrRes.json();
+                    const tbody = document.getElementById('userTableBody');
+                    tbody.innerHTML = '';
+                    users.forEach(u => {
+                        tbody.innerHTML += `
+                            <tr>
+                                <td>${u.nombre}</td>
+                                <td>${u.telefonoCompleto}</td>
+                                <td>${u.codigoPais}</td>
+                                <td><span style="background:${u.role==='admin'?'var(--accent)':'var(--line)'}; color:${u.role==='admin'?'#fff':'var(--ink)'}; padding:2px 8px; border-radius:10px; font-size:12px;">${u.role}</span></td>
+                            </tr>
+                        `;
+                    });
+                }
+
+                // Leads Summary
+                const leadsRes = await fetch(`${BACKEND_URL}/api/admin/leads-summary`, { headers });
+                if (leadsRes.ok) {
+                    const summaries = await leadsRes.json();
+                    const tbody = document.getElementById('leadsTableBody');
+                    tbody.innerHTML = '';
+                    if (summaries.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="4">Aún no hay contactos subidos</td></tr>';
+                    } else {
+                        summaries.forEach(s => {
+                            const pendientes = s.total - s.sent;
+                            tbody.innerHTML += `
+                                <tr>
+                                    <td><strong>${s._id || 'Desconocido'}</strong></td>
+                                    <td>${s.total}</td>
+                                    <td style="color: var(--accent);">${s.sent}</td>
+                                    <td style="color: #f59e0b;">${pendientes}</td>
+                                </tr>
+                            `;
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function saveTemplate() {
+            const val = document.getElementById('plantillaInput').value;
+            const lote = parseInt(document.getElementById('loteInput').value) || 50;
+            try {
+                await fetch(`${BACKEND_URL}/api/admin/template`, {
+                    method: 'POST',
+                    headers: { ...headers, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ plantillaMensaje: val, loteAsignacion: lote })
+                });
+                alert('Configuración guardada');
+            } catch (e) {
+                alert('Error al guardar');
+            }
+        }
+
+        async function uploadLeads() {
+            const fileInput = document.getElementById('fileInput');
+            const textInput = document.getElementById('textInput');
+            const msg = document.getElementById('uploadMsg');
+            
+            let fileToUpload = null;
+
+            if (textInput.value.trim() !== '') {
+                // Convertir el texto pegado en un archivo virtual .txt
+                const blob = new Blob([textInput.value], { type: 'text/plain' });
+                fileToUpload = new File([blob], 'pegados.txt', { type: 'text/plain' });
+            } else if (fileInput.files[0]) {
+                fileToUpload = fileInput.files[0];
+            } else {
+                return alert('Pega los números o selecciona un archivo');
+            }
+            
+            msg.textContent = 'Subiendo...';
+            const formData = new FormData();
+            formData.append('file', fileToUpload);
+
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/admin/upload-leads`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData
+                });
+                const data = await res.json();
+                msg.textContent = data.message;
+                fileInput.value = ''; // clear
+                textInput.value = ''; // clear
+                loadData(); // refresh stats
+            } catch (e) {
+                msg.textContent = 'Error al subir';
+            }
+        }
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = 'login.html';
+        }
+
+        loadData();
+    </script>
+</body>
+</html>
