@@ -3,6 +3,7 @@ const router = express.Router();
 const auth = require('../middleware/authMiddleware');
 const Lead = require('../models/Lead');
 const Settings = require('../models/Settings');
+const User = require('../models/User');
 
 // GET /api/leads
 // Obtiene una lista de contactos pendientes para el usuario, basándose en su país
@@ -10,7 +11,11 @@ router.get('/', auth, async (req, res) => {
     try {
         const { codigoPais, id: userId } = req.user;
         const settings = await Settings.findOne() || { plantillaMensaje: 'Hola!', loteAsignacion: 50, horaInicio: 8, horaFin: 18 };
-        const limite = settings.loteAsignacion || 50;
+        
+        // Multiplicar capacidad según cantidad de números del vendedor
+        const userDb = await User.findById(userId);
+        const factorMultiplicador = 1 + (userDb.numerosExtra ? userDb.numerosExtra.length : 0);
+        const limite = (settings.loteAsignacion || 50) * factorMultiplicador;
 
         // 1. Buscar leads que YA están asignados a este usuario y siguen pendientes
         let pendingLeads = await Lead.find({ assignedTo: userId, status: 'pending' });

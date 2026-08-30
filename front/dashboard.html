@@ -6,6 +6,7 @@
     <title>Voice IA - Panel de Usuario</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@300;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@23.0.4/build/css/intlTelInput.css">
     <style>
         .dashboard { padding: 100px 20px 40px; max-width: 800px; margin: 0 auto; }
         .card { background: var(--bg-soft); border: 1px solid var(--line); border-radius: 12px; padding: 25px; margin-bottom: 20px; }
@@ -20,6 +21,7 @@
         .tab.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--bg); }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
+        .iti { width: 100%; display: block; }
     </style>
 </head>
 <body>
@@ -43,6 +45,7 @@
         <div class="tabs">
             <div class="tab active" onclick="switchTab('pendientes')">Pendientes</div>
             <div class="tab" onclick="switchTab('enviados')">Enviados</div>
+            <div class="tab" onclick="switchTab('numeros')">Mis Números</div>
         </div>
 
         <div id="tab-pendientes" class="tab-content active">
@@ -60,8 +63,34 @@
                 </div>
             </div>
         </div>
+
+        <div id="tab-numeros" class="tab-content">
+            <div class="card" style="border-top-left-radius: 0; border-top-right-radius: 0;">
+                <h3 style="margin-top:0; margin-bottom:15px; font-size:16px;">Números Asociados</h3>
+                <div id="misNumerosList" style="margin-bottom:20px; display:grid; gap:10px;">
+                    <p style="text-align: center; color: var(--ink-3);">Cargando...</p>
+                </div>
+                
+                <hr style="border:0; border-top:1px solid var(--line-2); margin:20px 0;">
+                <h3 style="margin-top:0; margin-bottom:15px; font-size:16px;">Agregar Número Extra (+ Capacidad)</h3>
+                <form id="addNumberForm">
+                    <div style="margin-bottom: 15px;">
+                        <input type="tel" id="nuevoTelefono" class="form-control" required style="background:var(--bg);">
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <select id="nuevoTipo" class="form-control" required style="background:var(--bg);">
+                            <option value="normal">WhatsApp Normal</option>
+                            <option value="business">WhatsApp Business</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm">Agregar Número</button>
+                    <div id="addNumberMsg" style="margin-top:10px; font-size:13px; color:#ef4444;"></div>
+                </form>
+            </div>
+        </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@23.0.4/build/js/intlTelInput.min.js"></script>
     <script>
         const BACKEND_URL = 'https://vaice-ia-whatsapp.onrender.com'; // Cambiar a Render URL
         const token = localStorage.getItem('voice_token');
@@ -211,6 +240,10 @@
             
             if (tabId === 'pendientes') tabs[0].classList.add('active');
             if (tabId === 'enviados') tabs[1].classList.add('active');
+            if (tabId === 'numeros') {
+                tabs[2].classList.add('active');
+                loadMyNumbers();
+            }
 
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             document.getElementById('tab-' + tabId).classList.add('active');
@@ -220,6 +253,72 @@
             localStorage.clear();
             window.location.href = 'login.html';
         }
+
+        const inputNuevoTelefono = document.querySelector("#nuevoTelefono");
+        let itiNuevo = null;
+        if(inputNuevoTelefono) {
+            itiNuevo = window.intlTelInput(inputNuevoTelefono, {
+                utilsScript: "https://cdn.jsdelivr.net/npm/intl-tel-input@23.0.4/build/js/utils.js",
+                initialCountry: "auto",
+                separateDialCode: true,
+                geoIpLookup: function(callback) {
+                    fetch("https://ipapi.co/json").then(r => r.json()).then(d => callback(d.country_code)).catch(() => callback("us"));
+                }
+            });
+        }
+
+        async function loadMyNumbers() {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if(res.ok) {
+                    const userData = await res.json();
+                    const list = document.getElementById('misNumerosList');
+                    list.innerHTML = `
+                        <div style="background:var(--bg); padding:12px; border-radius:8px; border:1px solid var(--line-2);">
+                            <strong>Principal:</strong> ${userData.telefonoCompleto} <span style="font-size:12px; color:var(--ink-2); text-transform:capitalize;">(${userData.tipoWhatsapp || 'normal'})</span>
+                        </div>
+                    `;
+                    if(userData.numerosExtra && userData.numerosExtra.length > 0) {
+                        userData.numerosExtra.forEach((n, i) => {
+                            list.innerHTML += `
+                                <div style="background:var(--bg); padding:12px; border-radius:8px; border:1px solid var(--line-2);">
+                                    <strong>Extra ${i+1}:</strong> ${n.telefonoCompleto} <span style="font-size:12px; color:var(--ink-2); text-transform:capitalize;">(${n.tipoWhatsapp})</span>
+                                </div>
+                            `;
+                        });
+                    }
+                }
+            } catch(e) { console.error(e); }
+        }
+        
+        document.getElementById('addNumberForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const telefonoCompleto = itiNuevo.getNumber();
+            const tipoWhatsapp = document.getElementById('nuevoTipo').value;
+            const msg = document.getElementById('addNumberMsg');
+            
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/auth/add-number`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ telefonoCompleto, tipoWhatsapp })
+                });
+                const data = await res.json();
+                if(res.ok) {
+                    msg.style.color = '#4ade80';
+                    msg.innerText = 'Número agregado. ¡Tu capacidad se ha multiplicado!';
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    msg.style.color = '#ef4444';
+                    msg.innerText = data.message || 'Error al agregar';
+                }
+            } catch(err) {
+                msg.style.color = '#ef4444';
+                msg.innerText = 'Error de conexión';
+            }
+        });
 
         loadLeads();
     </script>

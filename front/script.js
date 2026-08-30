@@ -43,11 +43,13 @@ form.addEventListener('submit', async (e) => {
     const nombre = document.getElementById('nombre').value;
     const telefonoCompleto = iti.getNumber(); // Esto ya incluye el código de país (ej: +593999123456)
     const password = document.getElementById('password').value;
+    const tipoWhatsapp = document.getElementById('tipoWhatsapp').value;
 
     const data = {
         nombre,
         telefonoCompleto,
-        password
+        password,
+        tipoWhatsapp
     };
 
     // UI Loading state
