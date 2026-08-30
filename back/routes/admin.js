@@ -165,4 +165,63 @@ router.post('/upload-leads', auth, isAdmin, upload.single('file'), async (req, r
     }
 });
 
+// POST /api/admin/liquidation
+// Calcula el cierre de caja (reparto) basado en mensajes enviados
+router.post('/liquidation', auth, isAdmin, async (req, res) => {
+    try {
+        const { startDate, endDate, fPool, mTarget } = req.body;
+        if (!startDate || !endDate || !fPool || !mTarget) {
+            return res.status(400).json({ message: 'Faltan parámetros' });
+        }
+
+        const start = new Date(startDate);
+        start.setHours(0,0,0,0);
+        const end = new Date(endDate);
+        end.setHours(23,59,59,999);
+
+        const users = await User.find({ role: 'user' });
+        let totalPuntosEcosistema = 0;
+        const processedUsers = [];
+
+        for (const u of users) {
+            const mi = await Lead.countDocuments({ 
+                assignedTo: u._id, 
+                status: 'sent', 
+                sentAt: { $gte: start, $lte: end } 
+            });
+            const pi = Math.min(1.0, mi / parseFloat(mTarget));
+            totalPuntosEcosistema += pi;
+            processedUsers.push({
+                id: u._id,
+                nombre: u.nombre,
+                telefonoCompleto: u.telefonoCompleto,
+                mi,
+                pi
+            });
+        }
+
+        const fPoolNum = parseFloat(fPool);
+        const k = totalPuntosEcosistema > 0 ? (fPoolNum / totalPuntosEcosistema) : 0;
+        
+        const pagosFinales = processedUsers.map(u => {
+            const pagoNeto = u.pi * k;
+            return {
+                ...u,
+                pagoNeto: pagoNeto.toFixed(2)
+            };
+        });
+
+        pagosFinales.sort((a, b) => parseFloat(b.pagoNeto) - parseFloat(a.pagoNeto));
+
+        res.json({
+            totalPuntosEcosistema: totalPuntosEcosistema.toFixed(2),
+            k: k.toFixed(2),
+            pagosFinales
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error al calcular la liquidación' });
+    }
+});
+
 module.exports = router;

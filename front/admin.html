@@ -130,6 +130,66 @@
                 </div>
             </div>
         </div>
+
+        <div class="card" style="margin-top: 20px;">
+            <h3 style="font-family: var(--font-display);">Liquidación Semanal (Cierre de Caja)</h3>
+            <p style="font-size: 13px; color: var(--ink-2); margin-bottom: 15px;">Calcula el pago proporcional a cada usuario basado en su rendimiento.</p>
+            
+            <div class="grid-2" style="margin-bottom: 15px;">
+                <div>
+                    <label style="font-size: 13px; font-weight: 500; color: var(--ink-2);">Bolsa Semanal (Fpool) $</label>
+                    <input type="number" id="liqFpool" class="form-control" value="1000" style="margin-top: 5px;">
+                </div>
+                <div>
+                    <label style="font-size: 13px; font-weight: 500; color: var(--ink-2);">Meta de Mensajes (Mtarget)</label>
+                    <input type="number" id="liqMtarget" class="form-control" value="1000" style="margin-top: 5px;">
+                </div>
+            </div>
+            
+            <div class="grid-2" style="margin-bottom: 15px;">
+                <div>
+                    <label style="font-size: 13px; font-weight: 500; color: var(--ink-2);">Fecha Inicio</label>
+                    <input type="date" id="liqStart" class="form-control" style="margin-top: 5px;">
+                </div>
+                <div>
+                    <label style="font-size: 13px; font-weight: 500; color: var(--ink-2);">Fecha Fin</label>
+                    <input type="date" id="liqEnd" class="form-control" style="margin-top: 5px;">
+                </div>
+            </div>
+
+            <button onclick="calculateLiquidation()" class="btn btn-primary btn-sm">Calcular Liquidación</button>
+            <div id="liqMsg" style="margin-top: 10px; font-size: 13px; color: var(--accent);"></div>
+
+            <div id="liqResults" style="display: none; margin-top: 25px;">
+                <div style="background: rgba(37,99,235,0.1); border: 1px solid var(--accent); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <div>
+                            <span style="font-size: 12px; color: var(--ink-2);">Total Puntos (Ecosistema):</span>
+                            <div style="font-weight: 600; font-size: 16px;" id="resPuntos">...</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <span style="font-size: 12px; color: var(--ink-2);">Valor por Punto (Constante K):</span>
+                            <div style="font-weight: 600; font-size: 16px; color: var(--accent);" id="resK">...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="user-table">
+                        <thead>
+                            <tr>
+                                <th>Usuario</th>
+                                <th>Enviados (mi)</th>
+                                <th>Cumplimiento (Pi)</th>
+                                <th style="text-align: right;">Pago Neto</th>
+                            </tr>
+                        </thead>
+                        <tbody id="liqTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -269,6 +329,60 @@
         function logout() {
             localStorage.clear();
             window.location.href = 'login.html';
+        }
+
+        // Initialize liquidation dates
+        const d = new Date();
+        document.getElementById('liqEnd').value = d.toISOString().split('T')[0];
+        d.setDate(d.getDate() - 7);
+        document.getElementById('liqStart').value = d.toISOString().split('T')[0];
+
+        async function calculateLiquidation() {
+            const startDate = document.getElementById('liqStart').value;
+            const endDate = document.getElementById('liqEnd').value;
+            const fPool = document.getElementById('liqFpool').value;
+            const mTarget = document.getElementById('liqMtarget').value;
+            const msg = document.getElementById('liqMsg');
+            const results = document.getElementById('liqResults');
+            
+            if(!startDate || !endDate || !fPool || !mTarget) {
+                return msg.textContent = 'Llena todos los campos';
+            }
+            
+            msg.textContent = 'Calculando...';
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/admin/liquidation`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ startDate, endDate, fPool, mTarget })
+                });
+                if(res.ok) {
+                    msg.textContent = '';
+                    const data = await res.json();
+                    document.getElementById('resPuntos').textContent = data.totalPuntosEcosistema;
+                    document.getElementById('resK').textContent = '$' + data.k;
+                    
+                    const tbody = document.getElementById('liqTableBody');
+                    tbody.innerHTML = '';
+                    data.pagosFinales.forEach(u => {
+                        const isMax = parseFloat(u.pi) === 1.0;
+                        tbody.innerHTML += `
+                            <tr>
+                                <td>${u.nombre} <br><span style="font-size:11px; color:var(--ink-3);">${u.telefonoCompleto}</span></td>
+                                <td>${u.mi}</td>
+                                <td>${isMax ? '<span style="color:var(--accent); font-weight:bold;">1.00 (Topado)</span>' : parseFloat(u.pi).toFixed(2)}</td>
+                                <td style="text-align: right; font-weight: bold; color: #4ade80;">$${u.pagoNeto}</td>
+                            </tr>
+                        `;
+                    });
+                    results.style.display = 'block';
+                } else {
+                    const e = await res.json();
+                    msg.textContent = e.message || 'Error al calcular';
+                }
+            } catch(e) {
+                msg.textContent = 'Error de conexión';
+            }
         }
 
         loadData();
