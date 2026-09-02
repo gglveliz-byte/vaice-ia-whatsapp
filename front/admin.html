@@ -7,24 +7,48 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@300;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
     <style>
-        .dashboard { padding: 100px 20px 40px; max-width: 900px; margin: 0 auto; }
-        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
-        .card { background: var(--bg-soft); border: 1px solid var(--line); border-radius: 12px; padding: 25px; }
-        .stat-value { font-family: var(--font-display); font-size: 2.5rem; color: var(--ink); line-height: 1; }
-        .form-control {
-            width: 100%; padding: 12px; background: rgba(0,0,0,0.1); border: 1px solid var(--line-2);
-            border-radius: 8px; font-family: var(--font-body); font-size: 14px; margin-top: 10px; box-sizing: border-box;
-        }
-        .nav-link { color: var(--accent); cursor: pointer; font-size: 14px; font-weight: 500; }
-        textarea.form-control { resize: vertical; min-height: 100px; }
-        .user-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; min-width: 500px; }
-        .user-table th, .user-table td { text-align: left; padding: 12px; border-bottom: 1px solid var(--line); }
-        .table-responsive { width: 100%; overflow-x: auto; }
+        .dashboard { padding: 100px 20px 40px; max-width: 1100px; margin: 0 auto; }
+        .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; margin-bottom: 24px; }
+        .card { background: var(--bg-soft); border: 1px solid var(--line); border-radius: 12px; padding: 25px; transition: box-shadow 0.3s ease, transform 0.2s ease; }
+        .card:hover { box-shadow: 0 8px 30px rgba(0,0,0,0.04); transform: translateY(-2px); }
+        .stat-value { font-family: var(--font-display); font-size: clamp(2rem, 4vw, 2.8rem); color: var(--ink); line-height: 1; font-weight: 600; }
         
-        @media (max-width: 768px) {
-            .grid-2 { grid-template-columns: 1fr; }
-            .dashboard { padding-top: 80px; }
-            .stat-value { font-size: 2rem; }
+        .form-control {
+            width: 100%; padding: 14px 16px; background: rgba(0,0,0,0.02); border: 1px solid var(--line-2);
+            border-radius: 8px; font-family: var(--font-body); font-size: 14px; margin-top: 8px; box-sizing: border-box;
+            transition: all 0.3s ease;
+        }
+        .form-control:focus { outline: none; border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+        textarea.form-control { resize: vertical; min-height: 100px; }
+        
+        .nav-link { color: var(--accent); cursor: pointer; font-size: 14px; font-weight: 600; transition: opacity 0.2s; }
+        .nav-link:hover { opacity: 0.8; }
+        
+        /* Tablas Responsivas Mejoradas */
+        .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; border: 1px solid var(--line); margin-top: 15px; }
+        .user-table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 650px; background: #fff; }
+        .user-table th { background: #f1f5f9; color: var(--ink-2); font-weight: 600; text-transform: uppercase; font-size: 12px; letter-spacing: 0.05em; padding: 15px; text-align: left; border-bottom: 1px solid var(--line-2); }
+        .user-table td { text-align: left; padding: 16px 15px; border-bottom: 1px solid var(--line); color: var(--ink); }
+        .user-table tr:last-child td { border-bottom: none; }
+        .user-table tr:hover { background: #fafafa; }
+        
+        /* Media Queries Avanzadas */
+        @media (max-width: 850px) {
+            .grid-2 { grid-template-columns: 1fr; gap: 20px; }
+            .dashboard { padding-top: 90px; }
+        }
+        @media (max-width: 600px) {
+            .dashboard { padding: 80px 15px 30px; }
+            .card { padding: 20px; }
+            .section-title { font-size: 1.5rem; text-align: center; margin-bottom: 20px; }
+            
+            /* Ajustes en formularios y botones para móviles */
+            .grid-2 > div { width: 100%; }
+            .form-control { font-size: 16px; /* Evita zoom automático en iOS */ }
+            button.btn { width: 100%; justify-content: center; margin-top: 20px !important; }
+            
+            .header-inner { flex-direction: row; justify-content: space-between; }
+            #qrImage { width: 100%; max-width: 250px; }
         }
     </style>
 </head>
@@ -80,11 +104,18 @@
                 <button onclick="saveTemplate()" class="btn btn-primary btn-sm" style="margin-top: 15px;">Guardar Configuración</button>
             </div>
             <div class="card">
-                <h3 style="font-family: var(--font-display);">Subir Contactos</h3>
-                <p style="font-size: 13px; color: var(--ink-2);">Pega los números aquí, o sube un archivo CSV/TXT (ej: +593999).</p>
+                <h3 style="font-family: var(--font-display); display: flex; justify-content: space-between; align-items: center;">
+                    Subir Contactos
+                    <span id="wpStatusBadge" style="font-size: 11px; padding: 4px 8px; border-radius: 12px; background: var(--line); color: var(--ink);">Comprobando Bot...</span>
+                </h3>
+                <div id="qrContainer" style="display: none; text-align: center; margin: 15px 0; background: #fff; padding: 10px; border-radius: 8px;">
+                    <p style="font-size: 12px; color: #000; font-weight: 500; margin-bottom: 10px;">Escanea para conectar el Bot Validador de WhatsApp:</p>
+                    <img id="qrImage" src="" alt="QR Code" style="max-width: 200px; border: 1px solid #eee; border-radius: 4px;">
+                </div>
+                <p style="font-size: 13px; color: var(--ink-2);">Pega los números aquí, o sube un archivo CSV/JSON.</p>
                 <textarea id="textInput" class="form-control" placeholder="Pega los números aquí... (uno por línea)" style="min-height: 80px; margin-bottom: 10px;"></textarea>
                 <div style="font-size: 12px; color: var(--ink-2); margin-bottom: 5px;">O sube un archivo:</div>
-                <input type="file" id="fileInput" class="form-control" accept=".csv, .txt">
+                <input type="file" id="fileInput" class="form-control" accept=".csv, .txt, .json">
                 <button onclick="uploadLeads()" class="btn btn-primary btn-sm" style="margin-top: 15px;">Subir Contactos</button>
                 <div id="uploadMsg" style="margin-top: 10px; font-size: 13px; color: var(--accent);"></div>
             </div>
@@ -193,7 +224,7 @@
     </div>
 
     <script>
-        const BACKEND_URL = 'https://vaice-ia-whatsapp.onrender.com'; // Cambiar a Render URL
+        const BACKEND_URL = 'http://localhost:5000'; // Cambiar a Render URL en producción
         const token = localStorage.getItem('voice_token');
         const user = JSON.parse(localStorage.getItem('voice_user') || '{}');
 
@@ -212,6 +243,31 @@
                     document.getElementById('statUsers').textContent = stats.totalUsers;
                     document.getElementById('statPending').textContent = stats.pendingLeads;
                     document.getElementById('statSent').textContent = stats.sentLeads;
+                }
+
+                // WhatsApp Bot Status
+                const wpRes = await fetch(`${BACKEND_URL}/api/admin/whatsapp-status`, { headers });
+                if (wpRes.ok) {
+                    const wpStatus = await wpRes.json();
+                    const badge = document.getElementById('wpStatusBadge');
+                    const qrContainer = document.getElementById('qrContainer');
+                    const qrImage = document.getElementById('qrImage');
+                    
+                    if (wpStatus.isConnected) {
+                        badge.textContent = 'Bot Conectado';
+                        badge.style.background = '#dcfce7'; // green-100
+                        badge.style.color = '#166534'; // green-800
+                        qrContainer.style.display = 'none';
+                    } else {
+                        badge.textContent = 'Bot Desconectado';
+                        badge.style.background = '#fee2e2'; // red-100
+                        badge.style.color = '#991b1b'; // red-800
+                        
+                        if (wpStatus.qr) {
+                            qrImage.src = wpStatus.qr;
+                            qrContainer.style.display = 'block';
+                        }
+                    }
                 }
 
                 // Template and Settings
@@ -306,7 +362,7 @@
                 return alert('Pega los números o selecciona un archivo');
             }
             
-            msg.textContent = 'Subiendo...';
+            msg.textContent = 'Subiendo y Validando números en WhatsApp... (esto puede tardar)';
             const formData = new FormData();
             formData.append('file', fileToUpload);
 

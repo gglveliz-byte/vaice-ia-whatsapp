@@ -7,6 +7,7 @@ const User = require('../models/User');
 const Lead = require('../models/Lead');
 const Settings = require('../models/Settings');
 const { parsePhoneNumberFromString } = require('libphonenumber-js');
+const whatsappClient = require('../whatsappClient');
 
 // Middleware to verify Admin role
 const isAdmin = (req, res, next) => {
@@ -109,56 +110,86 @@ router.post('/template', auth, isAdmin, async (req, res) => {
     }
 });
 
+// GET /api/admin/whatsapp-status
+router.get('/whatsapp-status', auth, isAdmin, (req, res) => {
+    res.json(whatsappClient.getStatus());
+});
+
 // POST /api/admin/upload-leads
-// Sube un archivo TXT o CSV de números
+// Sube un archivo TXT, CSV o JSON de números
 router.post('/upload-leads', auth, isAdmin, upload.single('file'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ message: 'No se subió archivo' });
 
         const fileContent = fs.readFileSync(req.file.path, 'utf8');
-        // Separar solo por saltos de linea
-        const lines = fileContent.split(/[\r\n]+/).map(l => l.trim()).filter(l => l.length > 5);
-        
-        let inserted = 0;
-        for (const line of lines) {
-            let nombre = '';
-            let telefono = '';
+        let contacts = [];
 
-            // Si hay coma, asumimos "Nombre, Telefono"
-            if (line.includes(',')) {
-                const parts = line.split(',');
-                nombre = parts[0].trim();
-                telefono = parts[1].trim();
-            } else {
-                telefono = line;
+        // Intentar parsear como JSON (Formato Apify)
+        try {
+            const jsonData = JSON.parse(fileContent);
+            if (Array.isArray(jsonData)) {
+                contacts = jsonData.map(item => ({
+                    nombre: item.name || item.nombre || '',
+                    telefono: item.phone || item.telefono || ''
+                }));
             }
+        } catch (e) {
+            // Si no es JSON, procesar como lineas de CSV/TXT
+            const lines = fileContent.split(/[\r\n]+/).map(l => l.trim()).filter(l => l.length > 5);
+            for (const line of lines) {
+                if (line.includes(',')) {
+                    const parts = line.split(',');
+                    contacts.push({ nombre: parts[0].trim(), telefono: parts[1].trim() });
+                } else {
+                    contacts.push({ nombre: '', telefono: line });
+                }
+            }
+        }
 
-            // Limpiar espacios en el teléfono
-            telefono = telefono.replace(/\s+/g, '');
+        let validos = 0;
+        let invalidos = 0;
 
-            // Extraer código de país exacto usando libphonenumber-js
+        for (const contact of contacts) {
+            let { nombre, telefono } = contact;
+            
+            // Limpiar: dejar solo numeros (y el + opcional al inicio)
+            telefono = telefono.replace(/[^0-9+]/g, '');
+            if (!telefono) continue;
+
             let codigoPais = '+1';
             const numberForParsing = telefono.startsWith('+') ? telefono : '+' + telefono;
             const parsedPhone = parsePhoneNumberFromString(numberForParsing);
             if (parsedPhone) {
                 codigoPais = `+${parsedPhone.countryCallingCode}`;
+                telefono = parsedPhone.number; // asegura formato estandarizado
             } else {
                 const codigoPaisMatch = telefono.match(/^(\+\d{1,4})/);
                 codigoPais = codigoPaisMatch ? codigoPaisMatch[1] : '+1';
             }
             
-            // Verifica si ya existe
-            const exists = await Lead.findOne({ telefono });
-            if (!exists) {
-                await Lead.create({ nombre, telefono, codigoPais });
-                inserted++;
+            
+            // Validar en WhatsApp
+            const isValid = await whatsappClient.isValidWhatsApp(telefono);
+            
+            // DELAY DE SEGURIDAD (1 a 3 segundos aleatorio)
+            // Simula comportamiento humano para evitar que WhatsApp detecte actividad bot y banee el número
+            const delayTime = Math.floor(Math.random() * 2000) + 1000;
+            await new Promise(resolve => setTimeout(resolve, delayTime));
+
+            if (isValid) {
+                const exists = await Lead.findOne({ telefono });
+                if (!exists) {
+                    await Lead.create({ nombre, telefono, codigoPais });
+                    validos++;
+                }
+            } else {
+                invalidos++;
             }
         }
         
-        // Limpiar
         fs.unlinkSync(req.file.path);
         
-        res.json({ message: `Se insertaron ${inserted} contactos exitosamente` });
+        res.json({ message: `Proceso completado. ${validos} contactos válidos guardados. ${invalidos} contactos descartados.` });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Error procesando archivo' });
