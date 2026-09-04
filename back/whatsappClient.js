@@ -7,41 +7,56 @@ let qrCodeDataUrl = null;
 let isConnected = false;
 let client = null;
 
-function getChromePath() {
+const { install, resolveBuildId, Browser, computeExecutablePath } = require('@puppeteer/browsers');
+
+async function getChromePath() {
     if (process.env.PUPPETEER_EXECUTABLE_PATH) {
         return process.env.PUPPETEER_EXECUTABLE_PATH;
-    }
-
-    try {
-        const puppeteer = require('puppeteer');
-        const executable = puppeteer.executablePath();
-        if (fs.existsSync(executable)) {
-            console.log('✅ Chrome encontrado por Puppeteer local:', executable);
-            return executable;
-        }
-    } catch(e) {
-        // Ignorar si falla
     }
 
     const paths = [
         '/usr/bin/google-chrome',
         '/usr/bin/google-chrome-stable',
         '/usr/bin/chromium',
-        '/usr/bin/chromium-browser',
-        '/usr/bin/chrome'
+        '/usr/bin/chromium-browser'
     ];
     for (const p of paths) {
         if (fs.existsSync(p)) return p;
     }
-    return null; // Dejar que Puppeteer intente usar su caché local si no encuentra ninguna
+
+    // Descarga automática en tiempo de ejecución (A prueba de fallos para Render)
+    const cacheDir = path.join(__dirname, '.chrome-local');
+    const buildId = await resolveBuildId(Browser.CHROME, 'linux', 'latest');
+    
+    const executablePath = computeExecutablePath({ browser: Browser.CHROME, buildId, cacheDir });
+    
+    if (fs.existsSync(executablePath)) {
+        return executablePath;
+    }
+
+    console.log('Falta Chrome. Descargando Chrome portátil automáticamente (tomará 1-2 minutos)...');
+    await install({
+        cacheDir,
+        browser: Browser.CHROME,
+        buildId,
+        downloadProgressCallback: (downloadedBytes, totalBytes) => {
+            // Silenciamos el progreso para no saturar los logs de Render
+        }
+    });
+    console.log('✅ Chrome portátil descargado con éxito!');
+    
+    return executablePath;
 }
 
-function initializeClient() {
+async function initializeClient() {
+    const chromePath = await getChromePath();
+    console.log('Iniciando Puppeteer con Chrome en:', chromePath);
+
     client = new Client({
         authStrategy: new LocalAuth({ dataPath: './.wwebjs_auth' }),
         puppeteer: {
             headless: true,
-            executablePath: getChromePath(),
+            executablePath: chromePath,
             args: [
                 '--no-sandbox', 
                 '--disable-setuid-sandbox',
