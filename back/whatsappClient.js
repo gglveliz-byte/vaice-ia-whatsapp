@@ -1,153 +1,77 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode');
 const fs = require('fs');
 const path = require('path');
 
 let qrCodeDataUrl = null;
 let isConnected = false;
-let client = null;
-
-const { install, resolveBuildId, Browser, computeExecutablePath } = require('@puppeteer/browsers');
-
-async function getChromePath() {
-    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-        return process.env.PUPPETEER_EXECUTABLE_PATH;
-    }
-
-    const paths = [
-        '/usr/bin/google-chrome',
-        '/usr/bin/google-chrome-stable',
-        '/usr/bin/chromium',
-        '/usr/bin/chromium-browser'
-    ];
-    for (const p of paths) {
-        if (fs.existsSync(p)) return p;
-    }
-
-    // Descarga automática en tiempo de ejecución (A prueba de fallos para Render)
-    const cacheDir = path.join(__dirname, '.chrome-local');
-    const buildId = await resolveBuildId(Browser.CHROME, 'linux', 'latest');
-    
-    const executablePath = computeExecutablePath({ browser: Browser.CHROME, buildId, cacheDir });
-    
-    if (fs.existsSync(executablePath)) {
-        return executablePath;
-    }
-
-    console.log('Falta Chrome. Descargando Chrome portátil automáticamente (tomará 1-2 minutos)...');
-    await install({
-        cacheDir,
-        browser: Browser.CHROME,
-        buildId,
-        downloadProgressCallback: (downloadedBytes, totalBytes) => {
-            // Silenciamos el progreso para no saturar los logs de Render
-        }
-    });
-    console.log('✅ Chrome portátil descargado con éxito!');
-    
-    return executablePath;
-}
+let sock = null;
 
 async function initializeClient() {
-    const chromePath = await getChromePath();
-    console.log('Iniciando Puppeteer con Chrome en:', chromePath);
+    const authDir = path.join(__dirname, '.auth_info_baileys');
+    const { state, saveCreds } = await useMultiFileAuthState(authDir);
 
-    client = new Client({
-        authStrategy: new LocalAuth({ dataPath: './.wwebjs_auth' }),
-        puppeteer: {
-            headless: true,
-            executablePath: chromePath,
-            timeout: 60000,
-            args: [
-                '--no-sandbox', 
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--no-first-run',
-                '--no-zygote'
-            ]
+    sock = makeWASocket({
+        auth: state,
+        printQRInTerminal: false,
+        browser: ['Voice IA Validador', 'Chrome', '1.0.0'],
+    });
+
+    sock.ev.on('creds.update', saveCreds);
+
+    sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
+
+        if (qr) {
+            console.log('NUEVO QR GENERADO (Baileys). Escanea en el panel web.');
+            try {
+                qrCodeDataUrl = await qrcode.toDataURL(qr);
+            } catch (err) {
+                console.error('Error al generar QR:', err);
+            }
         }
-    });
 
-    client.on('qr', async (qr) => {
-        console.log('NUEVO QR GENERADO (Puppeteer). Escanea en el panel web.');
-        try {
-            qrCodeDataUrl = await qrcode.toDataURL(qr);
-        } catch (err) {
-            console.error('Error al generar QR:', err);
+        if (connection === 'close') {
+            const shouldReconnect = (lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+            console.log('Conexión cerrada. ¿Debe reconectar?', shouldReconnect);
+            
+            isConnected = false;
+            qrCodeDataUrl = null;
+
+            if (shouldReconnect) {
+                initializeClient();
+            } else {
+                console.log('Sesión cerrada o inválida. Limpiando caché de Baileys...');
+                cleanAuthAndRestart();
+            }
+        } else if (connection === 'open') {
+            console.log('=== CLIENTE WHATSAPP VALIDADOR LISTO (BAILEYS) ===');
+            isConnected = true;
+            qrCodeDataUrl = null;
         }
-    });
-
-    client.on('ready', () => {
-        console.log('=== CLIENTE WHATSAPP VALIDADOR LISTO (PUPPETEER) ===');
-        isConnected = true;
-        qrCodeDataUrl = null;
-    });
-
-    client.on('authenticated', () => {
-        console.log('Autenticado correctamente con sesión guardada.');
-        isConnected = true; // Para que la UI responda rápido
-        qrCodeDataUrl = null;
-    });
-
-    client.on('auth_failure', msg => {
-        console.error('Fallo en la autenticación, sesión inválida:', msg);
-        cleanAuthAndRestart();
-    });
-
-    client.on('disconnected', (reason) => {
-        console.log('Cliente desconectado (posible cierre desde el móvil):', reason);
-        cleanAuthAndRestart();
-    });
-
-    client.on('change_state', state => {
-        console.log('ESTADO DE WHATSAPP CAMBIÓ A:', state);
-        // Si se cierra sesión desde el teléfono, el estado cambia a UNPAIRED o CONFLICT
-        if (state === 'CONFLICT' || state === 'UNPAIRED' || state === 'UNLAUNCHED') {
-            cleanAuthAndRestart();
-        }
-    });
-
-    client.initialize().catch(e => {
-        console.error('Error fatal al inicializar Puppeteer:', e);
-        if (e.message && e.message.includes('Failed to launch')) {
-            console.error('--- ¡FALTAN LIBRERÍAS DE CHROME EN EL SERVIDOR (RENDER)! ---');
-            console.error('Debes agregar el Buildpack de Puppeteer en Render.');
-        }
-        cleanAuthAndRestart();
     });
 }
 
-// Función estricta de auto-limpieza ante cualquier error
 function cleanAuthAndRestart() {
     isConnected = false;
     qrCodeDataUrl = null;
-    console.log('Iniciando limpieza profunda de sesión corrupta/desconectada...');
+    sock = null;
     
     try {
-        if (client) {
-            client.destroy().catch(() => {});
+        const authDir = path.join(__dirname, '.auth_info_baileys');
+        if (fs.existsSync(authDir)) {
+            fs.rmSync(authDir, { recursive: true, force: true });
+            console.log('✅ Carpeta .auth_info_baileys eliminada con éxito.');
         }
-    } catch(e) {}
+    } catch(e) {
+        console.error('Error eliminando caché de Baileys:', e);
+    }
     
-    // Esperar unos segundos a que Puppeteer libere los archivos
     setTimeout(() => {
-        try {
-            const authPath = path.join(__dirname, '.wwebjs_auth');
-            if (fs.existsSync(authPath)) {
-                fs.rmSync(authPath, { recursive: true, force: true });
-                console.log('✅ Carpeta .wwebjs_auth eliminada con éxito (Sesión reseteada a fábrica).');
-            }
-        } catch(e) {
-            console.error('Error eliminando .wwebjs_auth. Puede estar en uso.', e);
-        }
-        
-        console.log('Reiniciando cliente de WhatsApp...');
         initializeClient();
-    }, 4000);
+    }, 2000);
 }
 
-// Inicializar por primera vez
 initializeClient();
 
 const getStatus = () => {
@@ -158,14 +82,13 @@ const getStatus = () => {
 };
 
 const isValidWhatsApp = async (phone) => {
-    if (!isConnected || !client) {
+    if (!isConnected || !sock) {
         throw new Error('El cliente de WhatsApp no está conectado.');
     }
     try {
         const cleanPhone = phone.replace('+', '');
-        // whatsapp-web.js comprueba si el número existe en WhatsApp
-        const numberId = await client.getNumberId(cleanPhone);
-        return numberId ? true : false;
+        const [result] = await sock.onWhatsApp(cleanPhone);
+        return result && result.exists ? true : false;
     } catch (err) {
         console.error('Error validando número:', phone, err);
         return false; 
