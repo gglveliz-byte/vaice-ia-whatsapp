@@ -1,61 +1,87 @@
-const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
-const pino = require('pino');
+const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const fs = require('fs');
+const path = require('path');
 
 let qrCodeDataUrl = null;
 let isConnected = false;
-let sock = null;
+let client = null;
 
-async function connectToWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState('./auth_info_baileys');
-
-    sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: false,
-        logger: pino({ level: 'silent' }), // Silenciar logs extensos
-        browser: ['VoiceIA Admin', 'Chrome', '1.0.0']
-    });
-
-    sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        
-        if (qr) {
-            console.log('NUEVO QR GENERADO (Baileys). Escanea en el panel web.');
-            try {
-                qrCodeDataUrl = await qrcode.toDataURL(qr);
-            } catch (err) {
-                console.error('Error al generar QR:', err);
-            }
-        }
-
-        if (connection === 'close') {
-            const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('Conexión cerrada. ¿Reconectar?', shouldReconnect);
-            isConnected = false;
-            qrCodeDataUrl = null;
-            if (shouldReconnect) {
-                setTimeout(connectToWhatsApp, 2000);
-            } else {
-                console.log('Te has desconectado manualmente. Reinicia el servidor o borra la carpeta auth_info_baileys para nuevo QR.');
-                // Limpiar auth si se deslogueó
-                try {
-                    fs.rmSync('./auth_info_baileys', { recursive: true, force: true });
-                } catch(e) {}
-                setTimeout(connectToWhatsApp, 2000);
-            }
-        } else if (connection === 'open') {
-            console.log('=== CLIENTE WHATSAPP VALIDADOR LISTO (BAILEYS) ===');
-            isConnected = true;
-            qrCodeDataUrl = null; // Limpiar QR
+function initializeClient() {
+    client = new Client({
+        authStrategy: new LocalAuth({ dataPath: './.wwebjs_auth' }),
+        puppeteer: {
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
         }
     });
 
-    sock.ev.on('creds.update', saveCreds);
+    client.on('qr', async (qr) => {
+        console.log('NUEVO QR GENERADO (Puppeteer). Escanea en el panel web.');
+        try {
+            qrCodeDataUrl = await qrcode.toDataURL(qr);
+        } catch (err) {
+            console.error('Error al generar QR:', err);
+        }
+    });
+
+    client.on('ready', () => {
+        console.log('=== CLIENTE WHATSAPP VALIDADOR LISTO (PUPPETEER) ===');
+        isConnected = true;
+        qrCodeDataUrl = null;
+    });
+
+    client.on('authenticated', () => {
+        console.log('Autenticado correctamente con sesión guardada.');
+    });
+
+    client.on('auth_failure', msg => {
+        console.error('Fallo en la autenticación, sesión inválida:', msg);
+        cleanAuthAndRestart();
+    });
+
+    client.on('disconnected', (reason) => {
+        console.log('Cliente desconectado (posible cierre desde el móvil):', reason);
+        cleanAuthAndRestart();
+    });
+
+    client.initialize().catch(e => {
+        console.error('Error fatal al inicializar Puppeteer:', e);
+        cleanAuthAndRestart();
+    });
 }
 
-// Inicializar
-connectToWhatsApp();
+// Función estricta de auto-limpieza ante cualquier error
+function cleanAuthAndRestart() {
+    isConnected = false;
+    qrCodeDataUrl = null;
+    console.log('Iniciando limpieza profunda de sesión corrupta/desconectada...');
+    
+    try {
+        if (client) {
+            client.destroy().catch(() => {});
+        }
+    } catch(e) {}
+    
+    // Esperar unos segundos a que Puppeteer libere los archivos
+    setTimeout(() => {
+        try {
+            const authPath = path.join(__dirname, '.wwebjs_auth');
+            if (fs.existsSync(authPath)) {
+                fs.rmSync(authPath, { recursive: true, force: true });
+                console.log('✅ Carpeta .wwebjs_auth eliminada con éxito (Sesión reseteada a fábrica).');
+            }
+        } catch(e) {
+            console.error('Error eliminando .wwebjs_auth. Puede estar en uso.', e);
+        }
+        
+        console.log('Reiniciando cliente de WhatsApp...');
+        initializeClient();
+    }, 4000);
+}
+
+// Inicializar por primera vez
+initializeClient();
 
 const getStatus = () => {
     return {
@@ -65,14 +91,14 @@ const getStatus = () => {
 };
 
 const isValidWhatsApp = async (phone) => {
-    if (!isConnected || !sock) {
+    if (!isConnected || !client) {
         throw new Error('El cliente de WhatsApp no está conectado.');
     }
     try {
         const cleanPhone = phone.replace('+', '');
-        // Baileys devuelve un array con el status del numero. Si existe devuelve [{ exists: true, jid: '...' }]
-        const [result] = await sock.onWhatsApp(cleanPhone);
-        return result && result.exists ? true : false;
+        // whatsapp-web.js comprueba si el número existe en WhatsApp
+        const numberId = await client.getNumberId(cleanPhone);
+        return numberId ? true : false;
     } catch (err) {
         console.error('Error validando número:', phone, err);
         return false; 
