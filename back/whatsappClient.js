@@ -11,6 +11,18 @@ function getChromePath() {
     if (process.env.PUPPETEER_EXECUTABLE_PATH) {
         return process.env.PUPPETEER_EXECUTABLE_PATH;
     }
+
+    try {
+        const puppeteer = require('puppeteer');
+        const executable = puppeteer.executablePath();
+        if (fs.existsSync(executable)) {
+            console.log('✅ Chrome encontrado por Puppeteer local:', executable);
+            return executable;
+        }
+    } catch(e) {
+        // Ignorar si falla
+    }
+
     const paths = [
         '/usr/bin/google-chrome',
         '/usr/bin/google-chrome-stable',
