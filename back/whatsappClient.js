@@ -7,12 +7,29 @@ let qrCodeDataUrl = null;
 let isConnected = false;
 let client = null;
 
+function getChromePath() {
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+        return process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+    const paths = [
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/chrome'
+    ];
+    for (const p of paths) {
+        if (fs.existsSync(p)) return p;
+    }
+    return null; // Dejar que Puppeteer intente usar su caché local si no encuentra ninguna
+}
+
 function initializeClient() {
     client = new Client({
         authStrategy: new LocalAuth({ dataPath: './.wwebjs_auth' }),
         puppeteer: {
             headless: true,
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null,
+            executablePath: getChromePath(),
             args: [
                 '--no-sandbox', 
                 '--disable-setuid-sandbox',
