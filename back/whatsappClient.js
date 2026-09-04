@@ -57,10 +57,13 @@ async function initializeClient() {
         puppeteer: {
             headless: true,
             executablePath: chromePath,
+            timeout: 60000,
             args: [
                 '--no-sandbox', 
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-first-run',
                 '--no-zygote'
             ]
         }
