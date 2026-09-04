@@ -65,6 +65,14 @@
         </div>
     </header>
 
+    <div id="serverWakeupOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.95); z-index: 9999; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+        <h2 style="font-family: var(--font-display); font-size: 24px; color: var(--ink); margin-bottom: 10px;">Iniciando Sistema 🚀</h2>
+        <p style="font-size: 15px; color: var(--ink-2); max-width: 400px; margin-bottom: 20px;">Desplegando servidor... Por favor espera un momento.</p>
+        <div style="font-size: 48px; font-weight: bold; color: var(--accent);" id="wakeupTimer">45</div>
+        <div style="margin-top: 20px; width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+    </div>
+    <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+
     <div class="dashboard">
         <h2 class="section-title">Administración</h2>
         
@@ -113,8 +121,8 @@
                     <span id="wpStatusBadge" style="font-size: 11px; padding: 4px 8px; border-radius: 12px; background: var(--line); color: var(--ink);">Comprobando Bot...</span>
                 </h3>
                 <div id="qrContainer" style="display: none; text-align: center; margin: 15px 0; background: #fff; padding: 10px; border-radius: 8px;">
-                    <p style="font-size: 12px; color: #000; font-weight: 500; margin-bottom: 10px;">Escanea para conectar el Bot Validador de WhatsApp:</p>
-                    <img id="qrImage" src="" alt="QR Code" style="max-width: 200px; border: 1px solid #eee; border-radius: 4px;">
+                    <p style="font-size: 12px; color: #000; font-weight: 500; margin-bottom: 10px;" id="qrText">Esperando código QR (esto puede tomar 10-20s)...</p>
+                    <img id="qrImage" src="" alt="QR Code" style="max-width: 200px; border: 1px solid #eee; border-radius: 4px; display: none; margin: 0 auto;">
                 </div>
                 <p style="font-size: 13px; color: var(--ink-2);">Pega los números aquí, o sube un archivo CSV/JSON.</p>
                 <textarea id="textInput" class="form-control" placeholder="Pega los números aquí... (uno por línea)" style="min-height: 80px; margin-bottom: 10px;"></textarea>
@@ -281,29 +289,7 @@
                 }
 
                 // WhatsApp Bot Status
-                const wpRes = await fetch(`${BACKEND_URL}/api/admin/whatsapp-status`, { headers });
-                if (wpRes.ok) {
-                    const wpStatus = await wpRes.json();
-                    const badge = document.getElementById('wpStatusBadge');
-                    const qrContainer = document.getElementById('qrContainer');
-                    const qrImage = document.getElementById('qrImage');
-                    
-                    if (wpStatus.isConnected) {
-                        badge.textContent = 'Bot Conectado';
-                        badge.style.background = '#dcfce7'; // green-100
-                        badge.style.color = '#166534'; // green-800
-                        qrContainer.style.display = 'none';
-                    } else {
-                        badge.textContent = 'Bot Desconectado';
-                        badge.style.background = '#fee2e2'; // red-100
-                        badge.style.color = '#991b1b'; // red-800
-                        
-                        if (wpStatus.qr) {
-                            qrImage.src = wpStatus.qr;
-                            qrContainer.style.display = 'block';
-                        }
-                    }
-                }
+                await fetchWhatsAppStatus();
 
                 // Template and Settings
                 const tplRes = await fetch(`${BACKEND_URL}/api/admin/template`, { headers });
@@ -368,6 +354,89 @@
                 }
             } catch (err) {
                 console.error(err);
+            }
+        }
+
+        let wpStatusInterval = null;
+        async function fetchWhatsAppStatus() {
+            try {
+                const wpRes = await fetch(`${BACKEND_URL}/api/admin/whatsapp-status`, { headers });
+                if (wpRes.ok) {
+                    const wpStatus = await wpRes.json();
+                    const badge = document.getElementById('wpStatusBadge');
+                    const qrContainer = document.getElementById('qrContainer');
+                    const qrImage = document.getElementById('qrImage');
+                    const qrText = document.getElementById('qrText');
+                    
+                    if (wpStatus.isConnected) {
+                        badge.textContent = 'Bot Conectado';
+                        badge.style.background = '#dcfce7'; 
+                        badge.style.color = '#166534'; 
+                        qrContainer.style.display = 'none';
+                        if (wpStatusInterval) clearInterval(wpStatusInterval);
+                    } else {
+                        badge.textContent = 'Bot Desconectado';
+                        badge.style.background = '#fee2e2'; 
+                        badge.style.color = '#991b1b'; 
+                        
+                        qrContainer.style.display = 'block';
+                        if (wpStatus.qr) {
+                            qrImage.src = wpStatus.qr;
+                            qrImage.style.display = 'block';
+                            qrText.textContent = 'Escanea el código QR desde WhatsApp:';
+                        } else {
+                            qrImage.style.display = 'none';
+                            qrText.textContent = 'Cargando navegador invisible para generar código QR... (Toma unos 15s)';
+                        }
+
+                        // Poll every 3 seconds if disconnected
+                        if (!wpStatusInterval) {
+                            wpStatusInterval = setInterval(fetchWhatsAppStatus, 3000);
+                        }
+                    }
+                }
+            } catch(e) {}
+        }
+
+        async function initPage() {
+            try {
+                // Hacer un ping rápido de 3 segundos
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3000);
+                
+                await fetch(`${BACKEND_URL}/api/admin/stats`, { headers, signal: controller.signal });
+                clearTimeout(timeoutId);
+                
+                // Servidor despierto
+                await loadData();
+            } catch (err) {
+                // Servidor dormido (timeout o error de red)
+                const overlay = document.getElementById('serverWakeupOverlay');
+                overlay.style.display = 'flex';
+                let timeLeft = 45;
+                const timerSpan = document.getElementById('wakeupTimer');
+                
+                const interval = setInterval(async () => {
+                    timeLeft--;
+                    timerSpan.innerText = timeLeft;
+                    
+                    if (timeLeft % 5 === 0) {
+                        try {
+                            const check = await fetch(`${BACKEND_URL}/api/admin/stats`, { headers });
+                            if (check.ok || check.status === 401) {
+                                clearInterval(interval);
+                                overlay.style.display = 'none';
+                                loadData();
+                            }
+                        } catch(e) {}
+                    }
+                    
+                    if (timeLeft <= 0) {
+                        clearInterval(interval);
+                        timerSpan.innerText = "Reintentando...";
+                        window.location.reload();
+                    }
+                }, 1000);
             }
         }
 
@@ -538,7 +607,7 @@
             }
         }
 
-        loadData();
+        initPage();
     </script>
 </body>
 </html>
