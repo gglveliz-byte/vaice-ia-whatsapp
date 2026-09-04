@@ -61,11 +61,7 @@ async function initializeClient() {
                 '--no-sandbox', 
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--no-first-run',
-                '--no-zygote',
-                '--single-process',
-                '--disable-gpu'
+                '--no-zygote'
             ]
         }
     });
@@ -87,6 +83,8 @@ async function initializeClient() {
 
     client.on('authenticated', () => {
         console.log('Autenticado correctamente con sesión guardada.');
+        isConnected = true; // Para que la UI responda rápido
+        qrCodeDataUrl = null;
     });
 
     client.on('auth_failure', msg => {
@@ -97,6 +95,14 @@ async function initializeClient() {
     client.on('disconnected', (reason) => {
         console.log('Cliente desconectado (posible cierre desde el móvil):', reason);
         cleanAuthAndRestart();
+    });
+
+    client.on('change_state', state => {
+        console.log('ESTADO DE WHATSAPP CAMBIÓ A:', state);
+        // Si se cierra sesión desde el teléfono, el estado cambia a UNPAIRED o CONFLICT
+        if (state === 'CONFLICT' || state === 'UNPAIRED' || state === 'UNLAUNCHED') {
+            cleanAuthAndRestart();
+        }
     });
 
     client.initialize().catch(e => {
