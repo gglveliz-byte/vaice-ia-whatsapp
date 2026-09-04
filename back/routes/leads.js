@@ -29,10 +29,15 @@ router.get('/', auth, async (req, res) => {
             assignedAt: { $gte: today } 
         });
 
-        // 3. Si se le han asignado hoy menos del límite diario permitido, buscar más
-        if (assignedTodayCount < limite) {
+        // 3. Si estamos dentro del horario y se le han asignado hoy menos del límite diario permitido, buscar más
+        const currentHour = new Date().getHours();
+        const horaInicio = settings.horaInicio || 8;
+        const horaFin = settings.horaFin || 18;
+        const isWithinSchedule = currentHour >= horaInicio && currentHour < horaFin;
+
+        if (isWithinSchedule && assignedTodayCount < limite) {
             const needed = limite - assignedTodayCount;
-            const newLeads = await Lead.find({ assignedTo: null, codigoPais, status: 'pending' }).limit(needed);
+            const newLeads = await Lead.find({ assignedTo: null, codigoPais, status: 'pending', isVerified: true }).limit(needed);
             
             if (newLeads.length > 0) {
                 const newLeadIds = newLeads.map(l => l._id);
@@ -45,10 +50,16 @@ router.get('/', auth, async (req, res) => {
 
         const sentLeads = await Lead.find({ assignedTo: userId, status: 'sent' }).sort({ sentAt: -1 }).limit(50);
         
+        
+        let plantillasArray = settings.plantillas;
+        if (!plantillasArray || plantillasArray.length === 0) {
+            plantillasArray = [settings.plantillaMensaje || 'Hola!'];
+        }
+
         res.json({ 
             pendingLeads, 
             sentLeads, 
-            plantilla: settings.plantillaMensaje,
+            plantillas: plantillasArray,
             horaInicio: settings.horaInicio || 8,
             horaFin: settings.horaFin || 18
         });

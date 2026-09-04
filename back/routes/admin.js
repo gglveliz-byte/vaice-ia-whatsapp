@@ -43,7 +43,8 @@ router.get('/stats', auth, isAdmin, async (req, res) => {
         const totalUsers = await User.countDocuments();
         const pendingLeads = await Lead.countDocuments({ status: 'pending' });
         const sentLeads = await Lead.countDocuments({ status: 'sent' });
-        res.json({ totalUsers, pendingLeads, sentLeads });
+        const unverifiedLeads = await Lead.countDocuments({ isVerified: { $ne: true } });
+        res.json({ totalUsers, pendingLeads, sentLeads, unverifiedLeads });
     } catch (err) {
         res.status(500).json({ message: 'Error obteniendo estadísticas' });
     }
@@ -75,8 +76,14 @@ router.get('/template', auth, isAdmin, async (req, res) => {
         if (!settings) {
             settings = await Settings.create({});
         }
+        
+        let plantillasArray = settings.plantillas;
+        if (!plantillasArray || plantillasArray.length === 0) {
+            plantillasArray = [settings.plantillaMensaje || 'Hola!'];
+        }
+
         res.json({ 
-            plantilla: settings.plantillaMensaje, 
+            plantillas: plantillasArray, 
             loteAsignacion: settings.loteAsignacion,
             horaInicio: settings.horaInicio,
             horaFin: settings.horaFin
@@ -92,7 +99,13 @@ router.post('/template', auth, isAdmin, async (req, res) => {
         let settings = await Settings.findOne();
         if (!settings) settings = new Settings();
         
-        if (req.body.plantillaMensaje !== undefined) settings.plantillaMensaje = req.body.plantillaMensaje;
+        if (req.body.plantillas !== undefined) {
+            settings.plantillas = req.body.plantillas;
+            if (settings.plantillas.length > 0) {
+                settings.plantillaMensaje = settings.plantillas[0]; // fallback
+            }
+        }
+        
         if (req.body.loteAsignacion !== undefined) settings.loteAsignacion = req.body.loteAsignacion;
         if (req.body.horaInicio !== undefined) settings.horaInicio = req.body.horaInicio;
         if (req.body.horaFin !== undefined) settings.horaFin = req.body.horaFin;
@@ -100,7 +113,7 @@ router.post('/template', auth, isAdmin, async (req, res) => {
         await settings.save();
         res.json({ 
             message: 'Configuración actualizada', 
-            plantilla: settings.plantillaMensaje, 
+            plantillas: settings.plantillas, 
             loteAsignacion: settings.loteAsignacion,
             horaInicio: settings.horaInicio,
             horaFin: settings.horaFin
@@ -168,28 +181,19 @@ router.post('/upload-leads', auth, isAdmin, upload.single('file'), async (req, r
             }
             
             
-            // Validar en WhatsApp
-            const isValid = await whatsappClient.isValidWhatsApp(telefono);
-            
-            // DELAY DE SEGURIDAD (1 a 3 segundos aleatorio)
-            // Simula comportamiento humano para evitar que WhatsApp detecte actividad bot y banee el número
-            const delayTime = Math.floor(Math.random() * 2000) + 1000;
-            await new Promise(resolve => setTimeout(resolve, delayTime));
-
-            if (isValid) {
-                const exists = await Lead.findOne({ telefono });
-                if (!exists) {
-                    await Lead.create({ nombre, telefono, codigoPais });
-                    validos++;
-                }
+            // Guardar sin verificar inmediatamente
+            const exists = await Lead.findOne({ telefono });
+            if (!exists) {
+                await Lead.create({ nombre, telefono, codigoPais, isVerified: false });
+                validos++;
             } else {
-                invalidos++;
+                invalidos++; // Ya existía
             }
         }
         
         fs.unlinkSync(req.file.path);
         
-        res.json({ message: `Proceso completado. ${validos} contactos válidos guardados. ${invalidos} contactos descartados.` });
+        res.json({ message: `Proceso completado. ${validos} contactos guardados (pendientes de verificación). ${invalidos} duplicados/descartados.` });
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Error procesando archivo' });
@@ -252,6 +256,64 @@ router.post('/liquidation', auth, isAdmin, async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Error al calcular la liquidación' });
+    }
+});
+
+// GET /api/admin/unverified-count
+router.get('/unverified-count', auth, isAdmin, async (req, res) => {
+    try {
+        const count = await Lead.countDocuments({ isVerified: { $ne: true } });
+        res.json({ count });
+    } catch (err) {
+        res.status(500).json({ message: 'Error obteniendo conteo' });
+    }
+});
+
+// POST /api/admin/verify-batch
+// Verifica 1 número y le dice al frontend cuánto esperar para el siguiente (evita timeouts en Render)
+router.post('/verify-batch', auth, isAdmin, async (req, res) => {
+    try {
+        // Traer 1 número no verificado
+        const leads = await Lead.find({ isVerified: { $ne: true } }).limit(1);
+        
+        if (leads.length === 0) {
+            return res.json({ message: 'Todos los números han sido verificados.', processed: 0, valid: 0, invalid: 0, remaining: 0, nextDelay: 0 });
+        }
+
+        let validCount = 0;
+        let invalidCount = 0;
+        const lead = leads[0];
+
+        // Verificar
+        const isValid = await whatsappClient.isValidWhatsApp(lead.telefono);
+            
+            if (isValid) {
+                lead.isVerified = true;
+                await lead.save();
+                validCount++;
+            } else {
+                // Eliminar el contacto si no tiene WhatsApp activo
+                await Lead.findByIdAndDelete(lead._id);
+                invalidCount++;
+            }
+
+        // Pausa humana calculada en el backend, pero ejecutada por el frontend
+        const delayTime = Math.floor(Math.random() * 20000) + 10000; 
+
+        const remaining = await Lead.countDocuments({ isVerified: { $ne: true } });
+
+        res.json({ 
+            message: `Número procesado. ${isValid ? 'Válido' : 'Eliminado'}.`, 
+            processed: 1,
+            valid: validCount,
+            invalid: invalidCount,
+            remaining,
+            nextDelay: delayTime
+        });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Error verificando lote' });
     }
 });
 

@@ -81,9 +81,13 @@
 
         <div class="grid-2">
             <div class="card">
-                <h3 style="font-family: var(--font-display);">Configuración Global</h3>
-                <p style="font-size: 13px; color: var(--ink-2); margin-bottom: 10px;">Plantilla de WhatsApp y Límite de Contactos.</p>
-                <textarea id="plantillaInput" class="form-control" placeholder="Cargando..."></textarea>
+                <h3 style="font-family: var(--font-display);">Plantillas de Mensaje</h3>
+                <p style="font-size: 13px; color: var(--ink-2); margin-bottom: 10px;">Agrega múltiples variantes de tu mensaje para evitar baneos por spam. El sistema las rotará automáticamente.</p>
+                
+                <div id="plantillasContainer" style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="font-size: 13px; color: var(--ink-3);">Cargando plantillas...</div>
+                </div>
+                <button onclick="addPlantillaUI('')" class="btn btn-sm" style="margin-top: 10px; background: var(--line); color: var(--ink); border: none;">+ Agregar Variante</button>
                 
                 <div style="margin-top: 15px;">
                     <label style="font-size: 13px; font-weight: 500; color: var(--ink-2);">Límite Diario de Asignación por Vendedor:</label>
@@ -118,6 +122,16 @@
                 <input type="file" id="fileInput" class="form-control" accept=".csv, .txt, .json">
                 <button onclick="uploadLeads()" class="btn btn-primary btn-sm" style="margin-top: 15px;">Subir Contactos</button>
                 <div id="uploadMsg" style="margin-top: 10px; font-size: 13px; color: var(--accent);"></div>
+            </div>
+
+            <div class="card" id="verificationCard" style="display: none; border: 2px solid #fbbf24; background: #fffbeb;">
+                <h3 style="font-family: var(--font-display); color: #b45309;">Verificación Pendiente</h3>
+                <p style="font-size: 13px; color: #92400e; margin-bottom: 10px;">
+                    Tienes <strong id="unverifiedCount" style="font-size: 16px;">0</strong> números subidos que aún no han sido verificados por tu bot de WhatsApp.
+                    No serán asignados a los vendedores hasta ser verificados.
+                </p>
+                <button id="btnVerify" onclick="startVerification()" class="btn btn-primary btn-sm" style="background: #d97706; border: none;">Comenzar Verificación</button>
+                <div id="verifyMsg" style="margin-top: 10px; font-size: 13px; font-weight: 500; color: #d97706;"></div>
             </div>
         </div>
 
@@ -224,7 +238,7 @@
     </div>
 
     <script>
-        const BACKEND_URL = 'http://localhost:5000'; // Cambiar a Render URL en producción
+        const BACKEND_URL = 'https://vaice-ia-whatsapp.onrender.com'; // Cambiar a Render URL en producción
         const token = localStorage.getItem('voice_token');
         const user = JSON.parse(localStorage.getItem('voice_user') || '{}');
 
@@ -233,6 +247,20 @@
         }
 
         const headers = { 'Authorization': `Bearer ${token}` };
+
+        function addPlantillaUI(text) {
+            const container = document.getElementById('plantillasContainer');
+            if(container.innerHTML.includes('Cargando plantillas...')) container.innerHTML = '';
+            
+            const id = Date.now() + Math.floor(Math.random()*1000);
+            const html = `
+                <div id="plt-${id}" style="position: relative;">
+                    <textarea class="form-control plantilla-item" placeholder="Ej: Hola {{1}}...">${text}</textarea>
+                    <button onclick="document.getElementById('plt-${id}').remove()" style="position: absolute; top: 15px; right: 10px; background: none; border: none; color: #ef4444; cursor: pointer; font-size: 12px; font-weight: bold;" title="Eliminar Variante">✕</button>
+                </div>
+            `;
+            container.insertAdjacentHTML('beforeend', html);
+        }
 
         async function loadData() {
             try {
@@ -243,6 +271,13 @@
                     document.getElementById('statUsers').textContent = stats.totalUsers;
                     document.getElementById('statPending').textContent = stats.pendingLeads;
                     document.getElementById('statSent').textContent = stats.sentLeads;
+                    
+                    if (stats.unverifiedLeads !== undefined && stats.unverifiedLeads > 0) {
+                        document.getElementById('verificationCard').style.display = 'block';
+                        document.getElementById('unverifiedCount').textContent = stats.unverifiedLeads;
+                    } else {
+                        document.getElementById('verificationCard').style.display = 'none';
+                    }
                 }
 
                 // WhatsApp Bot Status
@@ -274,7 +309,15 @@
                 const tplRes = await fetch(`${BACKEND_URL}/api/admin/template`, { headers });
                 if (tplRes.ok) {
                     const tpl = await tplRes.json();
-                    document.getElementById('plantillaInput').value = tpl.plantilla || '';
+                    
+                    document.getElementById('plantillasContainer').innerHTML = '';
+                    if (tpl.plantillas && tpl.plantillas.length > 0) {
+                        tpl.plantillas.forEach(p => addPlantillaUI(p));
+                    } else if (tpl.plantilla) {
+                        addPlantillaUI(tpl.plantilla);
+                    } else {
+                        addPlantillaUI('');
+                    }
                     if(tpl.loteAsignacion) {
                         document.getElementById('loteInput').value = tpl.loteAsignacion;
                     }
@@ -329,7 +372,13 @@
         }
 
         async function saveTemplate() {
-            const val = document.getElementById('plantillaInput').value;
+            const textareas = document.querySelectorAll('.plantilla-item');
+            const plantillas = Array.from(textareas).map(t => t.value.trim()).filter(t => t !== '');
+            
+            if (plantillas.length === 0) {
+                return alert('Debes tener al menos 1 plantilla de texto válida.');
+            }
+
             const lote = parseInt(document.getElementById('loteInput').value) || 50;
             const horaInicio = parseInt(document.getElementById('horaInicio').value) || 8;
             const horaFin = parseInt(document.getElementById('horaFin').value) || 18;
@@ -337,7 +386,7 @@
                 await fetch(`${BACKEND_URL}/api/admin/template`, {
                     method: 'POST',
                     headers: { ...headers, 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ plantillaMensaje: val, loteAsignacion: lote, horaInicio, horaFin })
+                    body: JSON.stringify({ plantillas: plantillas, loteAsignacion: lote, horaInicio, horaFin })
                 });
                 alert('Configuración guardada');
             } catch (e) {
@@ -362,7 +411,7 @@
                 return alert('Pega los números o selecciona un archivo');
             }
             
-            msg.textContent = 'Subiendo y Validando números en WhatsApp... (esto puede tardar)';
+            msg.textContent = 'Subiendo contactos...';
             const formData = new FormData();
             formData.append('file', fileToUpload);
 
@@ -379,6 +428,54 @@
                 loadData(); // refresh stats
             } catch (e) {
                 msg.textContent = 'Error al subir';
+            }
+        }
+        
+        let isVerifying = false;
+        async function startVerification() {
+            if (isVerifying) return;
+            const btn = document.getElementById('btnVerify');
+            const msg = document.getElementById('verifyMsg');
+            
+            isVerifying = true;
+            btn.textContent = 'Verificando... (Proceso en curso)';
+            btn.style.opacity = '0.7';
+            msg.textContent = 'El bot está revisando los números uno por uno. Puede tomar tiempo.';
+
+            while (isVerifying) {
+                try {
+                    const res = await fetch(`${BACKEND_URL}/api/admin/verify-batch`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    
+                    if (data.remaining !== undefined) {
+                        document.getElementById('unverifiedCount').textContent = data.remaining;
+                        
+                        if (data.remaining <= 0) {
+                            isVerifying = false;
+                            msg.textContent = '¡Todos los números han sido verificados!';
+                            btn.textContent = 'Comenzar Verificación';
+                            btn.style.opacity = '1';
+                            loadData(); // Refresh UI
+                            break;
+                        }
+
+                        // Pausa controlada por el frontend
+                        const delaySegundos = Math.round(data.nextDelay / 1000);
+                        msg.textContent = `${data.message} Esperando ${delaySegundos}s... (Faltan: ${data.remaining})`;
+                        await new Promise(r => setTimeout(r, data.nextDelay));
+                        
+                    } else {
+                        isVerifying = false;
+                        msg.textContent = 'Error o verificación completa.';
+                        break;
+                    }
+                } catch (e) {
+                    msg.textContent = 'Error de conexión. Intentando de nuevo en breve...';
+                    await new Promise(r => setTimeout(r, 5000)); // wait on error
+                }
             }
         }
 

@@ -108,13 +108,13 @@
                 if (res.status === 401) return logout();
                 
                 const data = await res.json();
-                renderLeads(data.pendingLeads || [], data.sentLeads || [], data.plantilla, data.horaInicio, data.horaFin);
+                renderLeads(data.pendingLeads || [], data.sentLeads || [], data.plantillas || ['Hola'], data.horaInicio, data.horaFin);
             } catch (err) {
                 console.error("Error cargando leads", err);
             }
         }
 
-        function renderLeads(pendingLeads, sentLeads, plantilla, horaInicio = 8, horaFin = 18) {
+        function renderLeads(pendingLeads, sentLeads, plantillas, horaInicio = 8, horaFin = 18) {
             const container = document.getElementById('leadsContainer');
             
             // Validar si estamos en el horario permitido (ej. de 8 a 18 -> 8:00 a 17:59)
@@ -142,9 +142,12 @@
                     container.appendChild(alertDiv);
                 }
 
-                pendingLeads.forEach(lead => {
+                pendingLeads.forEach((lead, index) => {
+                    // Seleccionar plantilla secuencialmente para variar el texto (A/B testing anti-spam)
+                    const plantillaSeleccionada = plantillas[index % plantillas.length];
+
                     // Usar replaceAll y valor por defecto 'Cliente' si no hay nombre
-                    let text = plantilla
+                    let text = plantillaSeleccionada
                         .replaceAll('{{1}}', lead.nombre || 'Cliente')
                         .replaceAll('{{2}}', lead._id.substring(0, 6));
                     
