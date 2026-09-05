@@ -41,10 +41,12 @@ router.get('/users', auth, isAdmin, async (req, res) => {
 router.get('/stats', auth, isAdmin, async (req, res) => {
     try {
         const totalUsers = await User.countDocuments();
-        const pendingLeads = await Lead.countDocuments({ status: 'pending' });
+        const pendingLeads = await Lead.countDocuments({ status: 'pending' }); // total en cola no asignados (validos + no verificados)
+        const validLeads = await Lead.countDocuments({ status: 'pending', isVerified: true });
         const sentLeads = await Lead.countDocuments({ status: 'sent' });
         const unverifiedLeads = await Lead.countDocuments({ isVerified: { $ne: true } });
-        res.json({ totalUsers, pendingLeads, sentLeads, unverifiedLeads });
+        const totalLeads = await Lead.countDocuments();
+        res.json({ totalUsers, pendingLeads, validLeads, sentLeads, unverifiedLeads, totalLeads });
     } catch (err) {
         res.status(500).json({ message: 'Error obteniendo estadísticas' });
     }
