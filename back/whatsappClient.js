@@ -1,15 +1,13 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, DisconnectReason } = require('@whiskeysockets/baileys');
+const { useMongoDBAuthState, AuthSession } = require('./mongoAuthState');
 const qrcode = require('qrcode');
-const fs = require('fs');
-const path = require('path');
 
 let qrCodeDataUrl = null;
 let isConnected = false;
 let sock = null;
 
 async function initializeClient() {
-    const authDir = path.join(__dirname, '.auth_info_baileys');
-    const { state, saveCreds } = await useMultiFileAuthState(authDir);
+    const { state, saveCreds } = await useMongoDBAuthState('voiceia');
 
     sock = makeWASocket({
         auth: state,
@@ -39,9 +37,9 @@ async function initializeClient() {
             qrCodeDataUrl = null;
 
             if (shouldReconnect) {
-                initializeClient();
+                setTimeout(initializeClient, 5000); // 5 seg de delay
             } else {
-                console.log('Sesión cerrada o inválida. Limpiando caché de Baileys...');
+                console.log('Sesión cerrada o inválida. Limpiando sesión en MongoDB...');
                 cleanAuthAndRestart();
             }
         } else if (connection === 'open') {
@@ -52,27 +50,25 @@ async function initializeClient() {
     });
 }
 
-function cleanAuthAndRestart() {
+async function cleanAuthAndRestart() {
     isConnected = false;
     qrCodeDataUrl = null;
     sock = null;
     
     try {
-        const authDir = path.join(__dirname, '.auth_info_baileys');
-        if (fs.existsSync(authDir)) {
-            fs.rmSync(authDir, { recursive: true, force: true });
-            console.log('✅ Carpeta .auth_info_baileys eliminada con éxito.');
-        }
+        await AuthSession.deleteMany({ _id: new RegExp('^voiceia-') });
+        console.log('✅ Sesión de WhatsApp borrada de MongoDB con éxito.');
     } catch(e) {
         console.error('Error eliminando caché de Baileys:', e);
     }
     
     setTimeout(() => {
         initializeClient();
-    }, 2000);
+    }, 5000);
 }
 
-initializeClient();
+// Retrasar inicio hasta que mongoose esté conectado desde server.js
+setTimeout(initializeClient, 3000);
 
 const getStatus = () => {
     return {
