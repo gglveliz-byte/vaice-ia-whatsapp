@@ -82,7 +82,7 @@ const isValidWhatsApp = async (phone) => {
         throw new Error('El cliente de WhatsApp no está conectado.');
     }
     try {
-        const cleanPhone = phone.replace('+', '');
+        const cleanPhone = phone.replace(/\D/g, '');
         const [result] = await sock.onWhatsApp(cleanPhone);
         return result && result.exists ? true : false;
     } catch (err) {
