@@ -152,7 +152,18 @@ router.post('/upload-leads', auth, isAdmin, upload.single('file'), async (req, r
             for (const line of lines) {
                 if (line.includes(',')) {
                     const parts = line.split(',');
-                    contacts.push({ nombre: parts[0].trim(), telefono: parts[1].trim() });
+                    const part0 = parts[0].trim();
+                    const part1 = parts[1] ? parts[1].trim() : '';
+                    
+                    // Inteligencia: El teléfono es el que tiene más números
+                    const p0digits = (part0.match(/\d/g) || []).length;
+                    const p1digits = (part1.match(/\d/g) || []).length;
+                    
+                    if (p0digits > p1digits) {
+                        contacts.push({ nombre: part1, telefono: part0 });
+                    } else {
+                        contacts.push({ nombre: part0, telefono: part1 });
+                    }
                 } else {
                     contacts.push({ nombre: '', telefono: line });
                 }
