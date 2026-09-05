@@ -78,12 +78,23 @@
         
         <div class="grid-2">
             <div class="card">
-                <h3 style="margin-bottom: 10px; font-family: var(--font-display);">Usuarios Registrados</h3>
+                <h3 style="margin-bottom: 10px; font-family: var(--font-display); font-size: 16px;">Usuarios Registrados</h3>
                 <div class="stat-value" id="statUsers">...</div>
             </div>
             <div class="card">
-                <h3 style="margin-bottom: 10px; font-family: var(--font-display);">Leads Pendientes / Enviados</h3>
-                <div class="stat-value" style="font-size: 1.8rem;"><span id="statPending">...</span> / <span id="statSent">...</span></div>
+                <h3 style="margin-bottom: 10px; font-family: var(--font-display); font-size: 16px;">Total en Inventario</h3>
+                <div class="stat-value" id="statTotalLeads">...</div>
+                <div style="font-size: 12px; color: var(--ink-2); margin-top: 5px;">(Incluye válidos y por verificar)</div>
+            </div>
+            <div class="card" style="border-color: #34d399; background: #ecfdf5;">
+                <h3 style="margin-bottom: 10px; font-family: var(--font-display); font-size: 16px; color: #065f46;">100% Válidos (Pendientes)</h3>
+                <div class="stat-value" id="statValidLeads" style="color: #059669;">...</div>
+                <div style="font-size: 12px; color: #065f46; margin-top: 5px;">Listos para asignar</div>
+            </div>
+            <div class="card" style="border-color: #93c5fd; background: #eff6ff;">
+                <h3 style="margin-bottom: 10px; font-family: var(--font-display); font-size: 16px; color: #1e3a8a;">Leads Asignados/Enviados</h3>
+                <div class="stat-value" id="statSentLeads" style="color: #2563eb;">...</div>
+                <div style="font-size: 12px; color: #1e3a8a; margin-top: 5px;">Ya enviados a usuarios</div>
             </div>
         </div>
 
@@ -276,9 +287,10 @@
                 const statRes = await fetch(`${BACKEND_URL}/api/admin/stats`, { headers });
                 if (statRes.ok) {
                     const stats = await statRes.json();
-                    document.getElementById('statUsers').textContent = stats.totalUsers;
-                    document.getElementById('statPending').textContent = stats.pendingLeads;
-                    document.getElementById('statSent').textContent = stats.sentLeads;
+                    document.getElementById('statUsers').textContent = stats.totalUsers || 0;
+                    document.getElementById('statTotalLeads').textContent = stats.totalLeads || 0;
+                    document.getElementById('statValidLeads').textContent = stats.validLeads || 0;
+                    document.getElementById('statSentLeads').textContent = stats.sentLeads || 0;
                     
                     if (stats.unverifiedLeads !== undefined && stats.unverifiedLeads > 0) {
                         document.getElementById('verificationCard').style.display = 'block';
